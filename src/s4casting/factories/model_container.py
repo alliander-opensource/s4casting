@@ -14,8 +14,30 @@ from s4casting.core.machine import Machine
 from s4casting.core.model_container import ModelContainer
 from s4casting.model._encoders import PatchDecoder, PatchEncoder, SeperateLocTime, SSEncoder
 from s4casting.model._heads import GMMHead, QuantileHead
+from s4casting.model.chronos import ChronosWrapper
 from s4casting.model.ss import SSModel
 from s4casting.model.transformer import TransformerModel
+
+
+def _build_chronos_model(config: ModelConfiguration) -> nn.Module:
+    """Instantiate a ChronosWrapper from config.
+
+    Returns:
+        nn.Module: ChronosWrapper on CPU (caller moves to device).
+    """
+    assert config.chronos is not None, "config.model='chronos' requires a [model.chronos] section"
+    predict_width_days = config.predict_width if isinstance(config.predict_width, int) else 2
+    prediction_length = (predict_width_days * 24 * 60) // config.base_sample_interval_minutes
+    return ChronosWrapper(
+        model_id=config.chronos.model_id,
+        n_out_features=config.n_out_features,
+        prediction_length=prediction_length,
+        freeze_backbone=config.chronos.freeze_backbone,
+        use_lora=config.chronos.use_lora,
+        lora_rank=config.chronos.lora_rank,
+        lora_alpha=config.chronos.lora_alpha,
+        lora_target_modules=config.chronos.lora_target_modules,
+    )
 
 
 def _build_loss_fn(config: ModelConfiguration) -> nn.Module:
@@ -170,6 +192,9 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
             norm_eps=config.norm_eps,
             base_sample_interval_minutes=config.base_sample_interval_minutes,
         )
+    elif config.model == "chronos":
+        model = _build_chronos_model(config)
+
     model.to(
         machine.torch_device
     )  # todo: include Bob's clamping parameter for clamping the normalization. Include in normalizer?

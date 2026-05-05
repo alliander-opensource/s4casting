@@ -118,6 +118,29 @@ class LossConfiguration(BaseModel):
     )
 
 
+class ChronosConfiguration(BaseModel):
+    """Chronos-2 fine-tuning configuration."""
+
+    model_id: str = Field(
+        "autogluon/chronos-2-small",
+        description="HuggingFace model ID for the pretrained Chronos-2 model.",
+    )
+    freeze_backbone: bool = Field(
+        True,
+        description="Freeze all non-LoRA backbone parameters during fine-tuning.",
+    )
+    use_lora: bool = Field(
+        True,
+        description="Apply LoRA adapters for parameter-efficient fine-tuning.",
+    )
+    lora_rank: int = Field(8, description="LoRA rank (r).")
+    lora_alpha: float = Field(32.0, description="LoRA scaling factor (alpha).")
+    lora_target_modules: list[str] = Field(
+        ["q", "v"],
+        description="Attention projection names to apply LoRA to.",
+    )
+
+
 class SSMConfiguration(BaseModel):
     """State Space Model configuration."""
 
@@ -238,10 +261,15 @@ class ModelConfiguration(BaseModel):
     alignment: ContextWindowAlignment = Field(
         ContextWindowAlignment.Daily, description="Temporal alignment strategy for input/output windows."
     )
-    model: Literal["ssm", "transformer"] = Field("ssm", description="Model type: 'ssm' or 'transformer'.")
+    model: Literal["ssm", "transformer", "chronos"] = Field(
+        "ssm", description="Model type: 'ssm', 'transformer', or 'chronos'."
+    )
     ssm: SSMConfiguration | None = Field(None, description="SSM-specific settings (required when model='ssm').")
     transformer: TransformerConfiguration | None = Field(
         None, description="Transformer-specific settings (required when model='transformer')."
+    )
+    chronos: ChronosConfiguration | None = Field(
+        None, description="Chronos-2 fine-tuning settings (required when model='chronos')."
     )
     patch_encoder: PatchEncoderConfiguration = Field(
         default_factory=PatchEncoderConfiguration, description="Patch encoder configuration."

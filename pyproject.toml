@@ -37,12 +37,14 @@ dependencies = [
     "openmeteo-requests>=1.7.3",
     "requests-cache>=1.2.1",
     "openstef>=4.0.0a2",
-    "huggingface-hub>=1.1.7",
+	"huggingface-hub>=0.23.0",
     "nbformat>=5.10.4",
     "ipykernel>=7.1.0",
     "urllib3>=2.5.0",
     "boto3>=1.40.49",
     "folium>=0.20.0",
+    "chronos-forecasting>=2.0.0rc4",
+    "peft>=0.13.0,<0.18",
 ]
 
 [dependency-groups]

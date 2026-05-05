@@ -81,6 +81,11 @@ class Trainer:
         """
         self.hooks.start.call(context)
 
+        # Baseline benchmark at iteration 0 so wandb has a pre-training reference point.
+        if self._iteration == 0 and self._main_process:
+            self.hooks.benchmark.call(context, 0)
+            self.hooks.stef_beam.call(context, 0)
+
         while self._iteration < self._config.maximum_steps:
             self.epoch = self._iteration // self._config.n_samples_per_epoch
             if context.machine.ddp:
