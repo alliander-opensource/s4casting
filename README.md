@@ -10,7 +10,6 @@ S4Casting is a forecasting toolkit built around several deep learning models:
 
 It is designed for medium voltage power forecasting tasks, including:
 - **Short-term forecasting** – covering time horizons of days, typically used for forecasts up to 2 days ahead.
-- **Mid- and long-term forecasting** – covering time horizons of months to years, typically used for 1-year ahead planning.
 
 The repo contains:
 - Training loop (distributed / torchrun-ready)
@@ -62,22 +61,7 @@ Please read [CODE_OF_CONDUCT](docs/CODE_OF_CONDUCT.md),
 requests to us.
 
 ## Citation
-If you find our code or models useful in your work, please cite our paper:
-
-```bibtex
-@article{doi:10.1049/icp.2025.1968,
-  author = {Michael Mesarcik and Jessica Loke and Jochem Wildeboer and Bob Lucassen},
-  title = {Probabilistic day-ahead power forecasting in the medium-voltage grid using state space models},
-  journal = {IET Conference Proceedings},
-  volume = {2025},
-  issue = {14},
-  pages = {1947-1951},
-  year = {2025},
-  doi = {10.1049/icp.2025.1968},
-  URL = {https://digital-library.theiet.org/doi/abs/10.1049/icp.2025.1968},
-  eprint = {https://digital-library.theiet.org/doi/pdf/10.1049/icp.2025.1968}
-}
-```
+For citing our work please see the relevant publications [CITATION](docs/CITATION.md). 
 
 ## Contact
 Please read [SUPPORT](DOCS/SUPPORT.md) for how to connect and get into
