@@ -58,8 +58,9 @@ gradient_clipping = 1
 [io]
 feature_order = ["measurements"]
 output = "out/"
+gap_skip_hours = 1
 
-[io.features.measurements]
-location = "data/measurements_plus_2024.json"
-loader = "parquet"
+[io.features.measurements_cdb]
+location = "data/LianderPower/"
+loader = "croissant"
 

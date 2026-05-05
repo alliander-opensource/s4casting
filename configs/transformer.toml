@@ -73,16 +73,17 @@ weight_decay = 0
 gradient_clipping = 1
 
 [io]
-feature_order = ["measurements", "weather"]
+feature_order = ["measurements_cdb", "weather"]
 output = "out/"
+gap_skip_hours  = 1
 
-[io.features.measurements]
-location = "data/measurements_plus_2024.json"
-loader = "parquet"
+[io.features.measurements_cdb]
+location = "data/LianderPower/"
+loader = "croissant"
 
 [io.features.weather]
-location = "data/weather_openmeteo.json"
-loader = "parquet"
+location = "data/LianderPower/"
+loader = "croissant"
 nearest_neighbor = true
 n_features = 4
 subset_features = [

@@ -60,19 +60,17 @@ weight_decay = 0
 gradient_clipping = 1
 
 [io]
-feature_order = ["measurements", "weather"]
-
+feature_order = ["measurements_cdb", "weather"]
 output = "out/"
-# load_checkpoint = ".data/smooth-dawn-1625_checkpoint_6000.pt" # using this checkpoint for direct inference will cause the process to nan'd out, i would recommend the newest main checkpoint available at s3://bob-thijs-ml-data/datacache/misty-spaceship-2331-checkpoint_main.pt
-#load_checkpoint = "./misty-spaceship-2331-checkpoint_main.pt"
+gap_skip_hours  = 1
 
-[io.features.measurements]
-location = "data/measurements_plus_2024.json"
-loader = "parquet"
+[io.features.measurements_cdb]
+location = "data/LianderPower/"
+loader = "croissant"
 
 [io.features.weather]
-location = "data/weather_openmeteo.json"
-loader = "parquet"
+location = "data/LianderPower/"
+loader = "croissant"
 nearest_neighbor = true
 n_features = 4
 subset_features = [
