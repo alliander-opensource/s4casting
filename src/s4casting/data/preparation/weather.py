@@ -4,6 +4,7 @@
 
 import json
 import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,7 +14,6 @@ import openmeteo_requests
 import pandas as pd
 import requests_cache
 from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
-from retry_requests import retry
 from tqdm import tqdm
 
 from s4casting.data.preparation.constants import DEFAULT_PARAMS
@@ -36,6 +36,8 @@ class WeatherDatasetFormatter:
         output_dir: str = "out",
         tilt: float = 48.7,
         azimuth: float = 180.0,
+        retries: int = 5,
+        backoff_factor: float = 0.2,
     ) -> None:
         """The constructor for WeatherDatasetFormatter.
 
@@ -47,6 +49,8 @@ class WeatherDatasetFormatter:
             output_dir: Directory to save output files.
             tilt: Tilt angle for solar calculations.
             azimuth: Azimuth angle for solar calculations.
+            retries: Number of retry attempts on failed requests.
+            backoff_factor: Multiplier for exponential backoff between retries.
         """
         self.df_locations = pd.read_csv(df_locations).copy()
         if not {"lon", "lat"}.issubset(self.df_locations.columns):
@@ -55,6 +59,8 @@ class WeatherDatasetFormatter:
         self.end_date = datetime.fromisoformat(end_date).replace(tzinfo=UTC)
         self.output_prefix = output_prefix
         self.output_dir = output_dir
+        self.retries = retries
+        self.backoff_factor = backoff_factor
         Path(self.output_dir).mkdir(exist_ok=True, parents=True)
 
         self.weather_params = list(DEFAULT_PARAMS)
@@ -85,7 +91,7 @@ class WeatherDatasetFormatter:
         self.cache_hits = 0
 
     def _make_client(self) -> openmeteo_requests.Client:
-        """Create an OpenMeteo client with caching and retry logic.
+        """Create an OpenMeteo client with caching.
 
         Returns:
             Configured OpenMeteo client.
@@ -97,14 +103,11 @@ class WeatherDatasetFormatter:
                 self.cache_hits += 1
 
         self.total_calls += 1
-
         self.cache_session.hooks["response"].append(count_hits)
-
-        retry_session = retry(self.cache_session, retries=5, backoff_factor=0.2)
-        return openmeteo_requests.Client(session=retry_session)  # type: ignore[return-value]
+        return openmeteo_requests.Client(session=self.cache_session)  # type: ignore[return-value]
 
     def _fetch(self, lat: float, lon: float) -> WeatherApiResponse:
-        """Fetch weather data for given coordinates.
+        """Fetch weather data for given coordinates, with manual retry logic.
 
         Args:
             lat: Latitude.
@@ -112,6 +115,9 @@ class WeatherDatasetFormatter:
 
         Returns:
             WeatherApiResponse object with fetched data.
+
+        Raises:
+            ValueError: If all retry attempts fail.
         """
         params = {
             "latitude": lat,
@@ -129,16 +135,24 @@ class WeatherDatasetFormatter:
             url = "https://customer-archive-api.open-meteo.com/v1/archive"
         else:
             url = "https://archive-api.open-meteo.com/v1/archive"
-        client = self._make_client()
 
-        try:
-            responses = client.weather_api(url, params=params)  # type: ignore[attr-defined]
-        except Exception as e:
-            raise ValueError(f"Error fetching data for coordinates ({lat}, {lon}): {e}") from e
+        last_exc: Exception | None = None
+        for attempt in range(self.retries):
+            try:
+                client = self._make_client()
+                responses = client.weather_api(url, params=params)  # type: ignore[attr-defined]
+                if not responses:
+                    raise ValueError(f"Empty response for coordinates ({lat}, {lon})")
+                return responses[0]
+            except Exception as e:
+                last_exc = e
+                wait = self.backoff_factor * (2**attempt)
+                print(  # noqa: T201
+                    f"Attempt {attempt + 1}/{self.retries} failed for ({lat}, {lon}): {e}. Retrying in {wait:.1f}s..."
+                )
+                time.sleep(wait)
 
-        if not responses:
-            raise ValueError(f"Error fetching data for coordinates ({lat}, {lon})")
-        return responses[0]
+        raise ValueError(f"All {self.retries} attempts failed for coordinates ({lat}, {lon})") from last_exc
 
     def build(self):
         """Build the weather dataset."""
