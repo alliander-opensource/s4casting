@@ -36,7 +36,6 @@ dependencies = [
     "openmeteo-sdk>=1.21.2",
     "openmeteo-requests>=1.7.3",
     "requests-cache>=1.2.1",
-    "retry-requests>=2.0.0",
     "openstef>=4.0.0a2",
     "huggingface-hub>=1.1.7",
     "nbformat>=5.10.4",
@@ -61,7 +60,6 @@ dev = [
 data = [
     "openmeteo-requests>=1.2.0",
     "requests-cache>=1.2.0",
-    "retry-requests>=2.0.0",
     "scipy>=1.13.1",
 ]
 
@@ -103,7 +101,6 @@ DEP003 = ["openstef_beam", "openstef_core"]
 pykeops = "pykeops"
 openmeteo-requests = "openmeteo_requests"
 requests-cache = "requests_cache"
-retry-requests = "retry_requests"
 python-dotenv = "dotenv"
 
 [tool.ty.src]
