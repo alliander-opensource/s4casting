@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: Contributors to the s4casting project
+#
+# SPDX-License-Identifier: MPL-2.0
+
+[machine]
+device_kind = "cuda"
+ddp = false
+
+[run]
+seed = 42069
+
+[training]
+task = "prediction"
+batch_size = 32
+gradient_accumulation_steps = 1
+evaluation_interval = 1000
+checkpoint_interval = 10_000
+benchmarking_interval = 10_000
+maximum_steps = 1_000_000
+
+[model]
+context_window = [32]
+predict_width = 2
+base_sample_interval_minutes = 15
+input_sample_intervals_minutes = [15]
+output_sample_intervals_minutes = [15]
+alignment = 1440
+model = "chronos"
+norm_clamp = 10
+norm_eps = 0.0001
+n_out_features = 1
+
+[model.chronos]
+model_id = "autogluon/chronos-2-small"
+#model_id = "amazon/chronos-2"
+freeze_backbone = false
+use_lora = false 
+#lora_rank = 8
+#lora_alpha = 16
+#lora_target_modules = ["q", "k", "v", "o", "output_patch_embedding.output_layer"]
+
+
+[model.loss]
+loss = "pinball"
+
+[model.output_head]
+arch = "quantile"
+quantile_values = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99] # For chronos-small
+#quantile_values = [0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99] # for normal chronos
+
+[benchmarking]
+eval_quantiles = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99] # fore chronos -small
+#eval_quantiles = [0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99] # for normal chronos
+
+[benchmarking.benchmarks.StefBeamBenchmark]
+targets_file = "liander2024_targets.yaml"
+context_window_days = 32
+predict_window_days = 2
+input_sample_interval_minutes = 15
+
+[optimizer]
+learning_rate = 1e-5
+weight_decay = 0
+gradient_clipping = 1
+
+[io]
+feature_order = ["measurements_cdb",  "weather"]
+output = "out/"
+gap_skip_hours = 1
+
+[io.features.measurements_cdb]
+location = "data/LianderPower/"
+loader = "croissant"
+
+[io.features.weather]
+location = "data/LianderPower/"
+loader = "croissant"
+nearest_neighbor = true
+main_dataset = "measurements"
+n_features = 4
+subset_features = [
+    "temperature_2m",
+    "wind_speed_100m",
+    "shortwave_radiation",
+    "direct_normal_irradiance"
+]

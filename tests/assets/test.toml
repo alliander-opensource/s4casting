@@ -58,12 +58,6 @@ context_window_days=11
 input_sample_interval_minutes=15
 output_sample_interval_minutes=15
 
-[benchmarking.benchmarks.StefBeamBenchmark]
-targets_file = "liander2024_targets_one_location.yaml"
-input_window_days=9
-predict_window_days=2
-input_sample_interval_minutes=15
-
 [optimizer]
 learning_rate = 1e-2
 weight_decay = 0

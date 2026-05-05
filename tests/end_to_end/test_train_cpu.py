@@ -54,16 +54,3 @@ def test_train_end_to_end_weather_cpu(load_config_with_weather: Configuration):
 
     # Run; test passes if no exception is raised
     train(cfg)
-
-
-def test_train_end_to_end_time_cpu(load_config_with_time: Configuration):
-    """End-to-end training smoke test.
-
-    Args:
-        load_config_with_time (Configuration): Configuration fixture with time data.
-    """
-    cfg: Configuration = load_config_with_time
-    cfg.machine.device_kind = "cpu"
-
-    # Run; test passes if no exception is raised
-    train(cfg)

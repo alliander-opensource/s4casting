@@ -4,7 +4,7 @@
 
 import pytest
 
-from s4casting.core.config import Configuration
+from s4casting.core.config import Configuration, StefBeamBenchmark
 from scripts.train import train
 from tests.utils import reduce_targets_yaml_to_single_location, requires_cuda
 
@@ -21,6 +21,11 @@ def test_stefbeam_smoke(request, config_fixture: str):
     reduce_targets_yaml_to_single_location()
 
     cfg: Configuration = request.getfixturevalue(config_fixture)
+    cfg.benchmarking.benchmarks["StefBeamBenchmark"] = StefBeamBenchmark(
+        targets_file="liander2024_targets_one_location.yaml",
+        predict_window_days=2,
+        input_sample_interval_minutes=15,
+    )
     cfg.machine.device_kind = "cuda"
     cfg.training.batch_size = 8
     cfg.training.evaluation_interval = 1
