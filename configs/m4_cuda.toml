@@ -1,0 +1,86 @@
+[machine]
+device_kind = "cuda"
+ddp = false
+
+[run]
+seed=42069
+
+[training]
+task="randomprediction"
+batch_size = 8
+gradient_accumulation_steps = 2
+evaluation_interval = 1000
+checkpoint_interval = 10_000
+benchmarking_interval = 10_000
+maximum_steps = 5_000_000
+
+[model]
+context_window =[7, 10, 14, 32, 64, 128, 364, 728] 
+predict_width = [0.01, 0.8] 
+base_sample_interval_minutes = 15
+input_sample_intervals_minutes = [5, 10, 15, 30, 60, 1440, 10080]
+output_sample_intervals_minutes = [15]
+alignment = 1440
+model = "ssm"
+norm_clamp = 10
+norm_eps = 0.0001
+latent_dim = 1024
+
+[model.loss]
+loss = "nll"
+sigma_regularisation_factor = 1
+
+[model.ssm]
+kernel = "s6"
+n_layers = 6
+
+[model.output_head]
+arch = "gmm"
+n_gaussians = 4
+quantile_values = [0.01, 0.05, 0.10, 0.20, 0.30, 0.50, 0.70, 0.80, 0.90, 0.95, 0.99]
+
+[model.patch_encoder]
+arch = "ss"
+n_layers = 4
+patch_size = 8
+
+[model.patch_decoder]
+arch = "linear"
+patch_size = 8#hour resolution; 1 month patch
+
+[benchmarking]
+eval_quantiles = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+
+[benchmarking.benchmarks.StefBeamBenchmark]
+targets_file = "liander2024_targets.yaml"
+context_window_days=32
+predict_window_days=2
+input_sample_interval_minutes=15
+
+[optimizer]
+learning_rate = 3e-5
+weight_decay = 0
+gradient_clipping = 1
+
+[io]
+feature_order = ["measurements_cdb", "weather"]
+output = "out/"
+gap_skip_perc = 5
+load_checkpoint="out/checkpoint_650000.pt"
+iteration=660_001
+
+[io.features.measurements_cdb]
+location = "data/LianderPower/"
+loader = "croissant"
+
+[io.features.weather]
+location = "data/LianderPower/"
+loader = "croissant"
+nearest_neighbor = true
+n_features = 4
+subset_features = [
+    "temperature_2m",
+    "wind_speed_100m",
+    "shortwave_radiation",
+    "direct_normal_irradiance"
+]

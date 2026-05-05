@@ -3,12 +3,12 @@
 # SPDX-License-Identifier: MPL-2.0
 
 from collections import defaultdict
-from itertools import product
 
 import numpy as np
 import torch
 from numpy.typing import NDArray
-from torch.utils.data import ConcatDataset
+from torch.utils.data import RandomSampler
+from torch.utils.data.distributed import DistributedSampler
 
 from s4casting.core.config import (
     BenchmarkingConfiguration,
@@ -19,6 +19,7 @@ from s4casting.core.config import (
     ValidationConfiguration,
 )
 from s4casting.core.context import Context
+from s4casting.core.functional import build_valid_context_sampling_pairs
 from s4casting.core.hooks import TrainingHooks
 from s4casting.core.machine import Machine
 from s4casting.core.tasks import PredictionTaskDataset, RandomMaskingTaskDataset, VariablePredictionTaskDataset
@@ -35,7 +36,7 @@ from s4casting.data.dataset.indexes import (
     intervals_for_year,
     substract,
 )
-from s4casting.data.utils import ConcatDatasetSampler, collate_single_interval
+from s4casting.data.utils import collate_single_interval
 
 
 class Batcher:
@@ -69,13 +70,14 @@ class Batcher:
         self.datasets_per_source, intervals = initialize_per_source_datasets(
             io_config, model_config, self.datasets_per_source
         )
-
-        context_sample_rates = list(
-            product(
-                model_config.context_window,
-                model_config.input_sample_intervals_minutes,
-            )
+        valid_context_windows = build_valid_context_sampling_pairs(
+            context_days=model_config.context_window,
+            sample_intervals_minutes=model_config.input_sample_intervals_minutes,
+            min_points=32,
         )
+        context_sample_rates = [
+            (r["context_days"], r["sample_interval_minutes"]) for r in valid_context_windows["valid_pairs"]
+        ]
 
         # check if we have specified local benchmarks and remove them from trianing set if so
         local_bench = bench_config.benchmarks.get("LocalBenchmark")
@@ -98,12 +100,11 @@ class Batcher:
         # Fill gaps for each combination of context window and sample rate
         non_benchmark_intervals = []
         for context_days, sample_rate in context_sample_rates:
-            sample_rate_factor = sample_rate / model_config.base_sample_interval_minutes
             context_window_minutes = context_days * 24 * 60
             _non_benchmark_intervals = fill_gaps(
                 non_benchmark_intervals_temp,
-                io_config.gap_skip_hours,
-                context_days * sample_rate_factor,
+                int(24 * context_days * (io_config.gap_skip_perc / 100)),
+                context_days,
                 io_config.context_window_valid_ratio,
             )
             _non_benchmark_intervals = add_duration(_non_benchmark_intervals, -context_window_minutes * 60)
@@ -125,7 +126,8 @@ class Batcher:
         self.validation_ds_lengths = [len(t) for t in self.validation]
         self.train = self._get_task_dataset(
             train_config.task,
-            ConcatDataset(self.train),
+            torch.utils.data.ConcatDataset(self.train),
+            valid_context_windows["recommended_max_context_len"],
             model_config.alignment,
             model_config.base_sample_interval_minutes,
             model_config.predict_width,
@@ -133,7 +135,8 @@ class Batcher:
         # Validation uses train configuration for tasks
         self.validation = self._get_task_dataset(
             train_config.task,
-            ConcatDataset(self.validation),
+            torch.utils.data.ConcatDataset(self.validation),
+            valid_context_windows["recommended_max_context_len"],
             model_config.alignment,
             model_config.base_sample_interval_minutes,
             model_config.predict_width,
@@ -232,10 +235,10 @@ class Batcher:
                 IntervalDataset(substract(_non_benchmark_intervals, _val_intervals), align),
                 _context_window_minutes * 60,  # context_window_minutes * 60,
                 dataset,
-                sample_rate_minutes * 60,  # sample,
+                sample_interval_minutes * 60,  # sample,
             )
             for (
-                sample_rate_minutes,
+                sample_interval_minutes,
                 _context_window_minutes,
                 _non_benchmark_intervals,
                 _val_intervals,
@@ -251,9 +254,9 @@ class Batcher:
                 IntervalDataset(_val_intervals, align),
                 _context_window_minutes * 60,  # context_window_minutes * 60,
                 dataset,
-                sample_rate_minutes * 60,  # sample,
+                sample_interval_minutes * 60,  # sample,
             )
-            for sample_rate_minutes, _context_window_minutes, _val_intervals in zip(
+            for sample_interval_minutes, _context_window_minutes, _val_intervals in zip(
                 sample_rates, context_windows_minutes, val_intervals
             )
         ]
@@ -287,36 +290,44 @@ class Batcher:
         Returns:
             tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]: Training and validation data loaders.
         """
-        # Create a sampler to properly distribute the data across multiple GPUs
-        ddp_kwargs = {"num_replicas": machine.world_size, "rank": machine.ddp.global_rank} if machine.ddp else {}
-
-        train_sampler = ConcatDatasetSampler(
-            self.train_ds_lengths,
-            train_config.batch_size,
-            drop_last=True,
-            seed=run_config.seed,
-            **ddp_kwargs,
-        )
+        if machine.ddp:
+            train_sampler = DistributedSampler(
+                self.train,
+                num_replicas=machine.world_size,
+                rank=machine.ddp.global_rank,
+                shuffle=True,
+                seed=run_config.seed + 10234,
+                drop_last=True,
+            )
+            validation_sampler = DistributedSampler(
+                self.validation,
+                num_replicas=machine.world_size,
+                rank=machine.ddp.global_rank,
+                shuffle=True,
+                seed=run_config.seed,
+                drop_last=False,
+            )
+        else:
+            train_sampler = RandomSampler(self.train, generator=torch.Generator().manual_seed(run_config.seed + 1028))
+            validation_sampler = RandomSampler(
+                self.validation, generator=torch.Generator().manual_seed(run_config.seed + 1028)
+            )
 
         train_loader = torch.utils.data.DataLoader(
             self.train,
-            batch_sampler=train_sampler,
+            batch_size=train_config.batch_size,
+            sampler=train_sampler,
+            drop_last=True,
             collate_fn=collate_single_interval,
-            num_workers=4,
+            num_workers=8,
             persistent_workers=True,
             pin_memory=True,
         )
 
-        validation_sampler = ConcatDatasetSampler(
-            self.validation_ds_lengths,
-            train_config.batch_size,
-            drop_last=False,
-            seed=run_config.seed,
-        )
-
         validation_loader = torch.utils.data.DataLoader(
             self.validation,
-            batch_sampler=validation_sampler,
+            batch_size=train_config.batch_size,
+            sampler=validation_sampler,
             collate_fn=collate_single_interval,
             num_workers=2,
             persistent_workers=True,
@@ -329,6 +340,7 @@ class Batcher:
     def _get_task_dataset(
         task_name: str,
         dataset: torch.utils.data.Dataset,
+        max_context_samples: int,
         alignment: int,
         sample_rate: int,
         predict_width: int | tuple[float, float] = 2,
@@ -338,6 +350,7 @@ class Batcher:
         Args:
             task_name (str): The name of the task ("prediction", "masking", or "randomprediction").
             dataset: The dataset to wrap in the task dataset.
+            max_context_samples: Maximum number for context_samples to zero pad to.
             alignment (int): data alignment.
             sample_rate (int): base sample rate of dataset.
             predict_width (int or tuple[float, float]): prediction window if using prediction task.
@@ -350,6 +363,7 @@ class Batcher:
                 raise ValueError("For a prediction task prediction_width must be an int.")
             return PredictionTaskDataset(
                 dataset,
+                max_context_samples,
                 0,
                 (predict_width * 24 * 60) // sample_rate,  # type: ignore
             )
@@ -357,6 +371,7 @@ class Batcher:
         if task_name == "masking":
             return RandomMaskingTaskDataset(
                 dataset,
+                max_context_samples,
                 alignment // sample_rate,
             )  # type: ignore
 
@@ -365,6 +380,7 @@ class Batcher:
                 raise ValueError("Task 'randomprediction' requires predict width of list.")
             return VariablePredictionTaskDataset(
                 dataset,
+                max_context_samples,
                 predict_dim=0,
                 min_predict_width_perc=predict_width[0],
                 max_predict_width_perc=predict_width[1],

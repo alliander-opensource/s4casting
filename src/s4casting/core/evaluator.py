@@ -61,11 +61,18 @@ class Evaluator:
             output_interval = select_rate(
                 sample_config.sample_interval_minutes, model_config.output_sample_intervals_minutes
             )
-            prediction, loss = evaluation_model(X, Xm, sample_config.sample_interval_minutes, output_interval, Y, Ym)
+            prediction, loss = evaluation_model(
+                X,
+                Xm,
+                sample_config.sample_interval_minutes.to(context.machine.torch_device),
+                output_interval.to(context.machine.torch_device),  # ty: ignore[possibly-missing-attribute]
+                Y,
+                Ym,
+            )
 
             context.validation_loss = loss.item()
-            context.input_validation_sample_rate = sample_config.sample_interval_minutes
-            context.output_validation_sample_rate = output_interval
+            context.input_validation_sample_rate = sample_config.sample_interval_minutes[0].item()  # ty: ignore[possibly-missing-attribute]
+            context.output_validation_sample_rate = output_interval[0].item()  # ty: ignore
 
             self.head_evaluator.report(
                 context=context,
@@ -78,8 +85,12 @@ class Evaluator:
                 iteration=iteration,
                 report_type="evaluation",
                 sample_config=sample_config,
-                output_interval=output_interval,
-                n_day_ahead=sample_config.predict_window_days[0].item(),
+                output_interval=output_interval[0].item(),  # ty: ignore
+                n_day_ahead=(
+                    sample_config.predict_window_samples[0].item()
+                    * sample_config.sample_interval_minutes[0].item()
+                    / (24 * 60)
+                ),
             )
 
             context.model_container.model.train(mode=True)

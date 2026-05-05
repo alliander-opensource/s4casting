@@ -40,7 +40,6 @@ class EvaluatorHead:
         Y: torch.Tensor,
         Ym: torch.Tensor,
         quantiles: torch.Tensor,
-        input_window_days: int,
         n_day_ahead: int,
         input_interval: int,
         output_interval: int,
@@ -61,7 +60,6 @@ class EvaluatorHead:
             Y (torch.Tensor): Ground truth data.
             Ym (torch.Tensor): Ground truth data mask.
             quantiles (torch.Tensor): Model outputs.
-            input_window_days (int): Number of input days.
             n_day_ahead (int): Number of predict days.
             input_interval (int): Input sample rate of eval step.
             output_interval (int): Output sample rate of eval step.
@@ -76,14 +74,13 @@ class EvaluatorHead:
         """
         n_input_predict = int(n_day_ahead * 24 * 60) // input_interval
         n_output_predict = int(n_day_ahead * 24 * 60) // output_interval
-        n_context = int(input_window_days * 24 * 60) // input_interval
         quantiles = quantiles[:, -n_output_predict:, ...].detach().cpu()
         # Hack so we can plot weather in both interleaved and single batch settings
         feature_mask = Ym[0].sum(dim=-2) == 0
         Y[:, :, feature_mask] = X[:, :, feature_mask]
 
-        X = X[:, :n_context, :].detach().cpu()
-        Xm = Xm[:, :n_context, :].detach().cpu()
+        X = X[:, :-n_input_predict, :].detach().cpu()
+        Xm = Xm[:, :-n_input_predict, :].detach().cpu()
         Y = Y[:, -n_input_predict:, :].detach().cpu()
         Ym = Ym[:, -n_input_predict:, :].detach().cpu()
         quantiles = quantiles.reshape((1, quantiles.shape[0] * quantiles.shape[1], quantiles.shape[-1]))
@@ -107,7 +104,7 @@ class EvaluatorHead:
         report_type: str,
         sample_config: SampleConfigBatch,
         output_interval: int,
-        n_day_ahead: int,
+        n_day_ahead: float,
         location: str | None = None,
         times: NDArray | None = None,
         sign: str | None = None,
@@ -128,7 +125,7 @@ class EvaluatorHead:
             sign (str): Sign for metrics calculation.
             report_type (str): Type of report (e.g., "benchmark", "evaluation", "inference").
             output_interval (int): Output sample rate of eval step.
-            n_day_ahead (int): Days ahead for the forecast (different from prediction width).
+            n_day_ahead (float): Days ahead for the forecast (different from prediction width).
             sample_config (SampleConfigBatch): Sample configuration.
         """
         if self.head_type == "gmm":
@@ -146,9 +143,8 @@ class EvaluatorHead:
             Y=Y,
             Ym=Ym,
             quantiles=prediction,
-            input_window_days=sample_config.context_window_days - sample_config.predict_window_days[0].item(),
             n_day_ahead=n_day_ahead,
-            input_interval=sample_config.sample_interval_minutes,
+            input_interval=sample_config.sample_interval_minutes[0].item(),
             output_interval=output_interval,
         )
 
@@ -161,8 +157,8 @@ class EvaluatorHead:
         )
         metrics = Metrics(
             output_sample_interval_minutes=output_interval,
-            prediction_window_days=int(sample_config.predict_window_days[0].item()),
-            input_sample_interval_minutes=sample_config.sample_interval_minutes,
+            prediction_window_days=int(sample_config.predict_window_samples[0].item() // output_interval),
+            input_sample_interval_minutes=sample_config.sample_interval_minutes[0].item(),
             climits=climits,  # type: ignore[arg-type]
             quantiles=quantiles,
             Y=Y,
@@ -180,10 +176,10 @@ class EvaluatorHead:
             Y,
             Ym,
             times,
-            sample_config.sample_interval_minutes,
+            sample_config.sample_interval_minutes[0].item(),
             output_interval,
             report_type,
-            "short" if sample_config.sample_interval_minutes == output_interval else "medium",
+            "short" if sample_config.sample_interval_minutes[0].item() == output_interval else "medium",
             feature_names=get_ordered_feature_names(context.configuration),
         )
 

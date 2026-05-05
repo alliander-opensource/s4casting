@@ -56,21 +56,16 @@ class SSModel(nn.Module):
         self.norm_clamp = norm_clamp
         self.norm_eps = norm_eps
         self.n_out_features = n_out_features
-        self.patch_decoder = patch_decoder
         self.patch_encoder = patch_encoder
         self.output_head = output_head
         self.latent_dim = latent_dim
         self.base_sample_interval_minutes = base_sample_interval_minutes
-        self.mask_token = torch.nn.Parameter(
-            torch.randn(
-                1,
-            )
-        )
 
         Kernel = {"s4": S4Block, "s6": S6Block, "gru": GruBlock}[kernel]
         self.ss_layers = nn.ModuleList([
             SequenceResidualBlock(self.latent_dim, Kernel, backend=backend) for _ in range(n_layer)
         ])
+        self.weather_forecaster = nn.Linear(self.latent_dim, 4)
 
     def forward(self, x, xm, input_interval, output_interval, y=None, ym=None):
         """Forward pass of the SSModel.
@@ -80,8 +75,8 @@ class SSModel(nn.Module):
             xm (torch.Tensor): Mask tensor of shape (batch_size, seq_len, n_features).
             y (torch.Tensor | None): Target tensor of shape (batch_size, seq_len, n_features).
             ym (torch.Tensor | None): Target mask tensor of shape (batch_size, seq_len, n_features).
-            input_interval (int): Used for multi-rate training of state space models.
-            output_interval (int): Used for multi-rate training of state space models.
+            input_interval (torch.Tensor): Used for multi-rate training of state space models.
+            output_interval (torch.Tensor): Used for multi-rate training of state space models.
 
         Returns:
             torch.Tensor: Output tensor of shape (batch_size, seq_len, n_out_features).
@@ -98,14 +93,43 @@ class SSModel(nn.Module):
             clamp=self.norm_clamp,
             dims=torch.arange(x.shape[-1] - 3 * isinstance(self.patch_encoder, SeperateLocTime)),
         )
-        x = torch.where(xm == 0, torch.clamp(self.mask_token, min=-self.norm_clamp, max=self.norm_clamp), x)
-        x = self.patch_encoder(
-            x, input_interval / self.base_sample_interval_minutes, output_interval // input_interval
-        )  # B T F -> B T/P E
+        x = x * xm
+
+        # Do the weather forecasting trick
+        if x.shape[-1] > 1:
+            B, T, C = x[..., 1:].shape
+
+            # Randomly mask weather features from the end
+            if y is None:
+                weather_mask = torch.ones_like(x[..., 1:], device=x.device)
+            else:
+                fractions = torch.rand(B, device=x.device)
+                n_masked = (fractions * T).long()
+                time_idx = torch.arange(T, device=x.device).view(1, T)
+                threshold = (T - n_masked).unsqueeze(1)
+                weather_mask = (time_idx < threshold).float().unsqueeze(-1).expand(B, T, C)  # (B, T, C)
+
+            # Extract ground truth before masking (only where mask is 0)
+            weather_gt = x[..., 1:] * (1 - weather_mask)  # (B, T, C)
+
+            # Apply mask and run through model
+            weather_masked = x.clone()
+            weather_masked[..., 1:] = x[..., 1:] * weather_mask
+            x = self.patch_encoder(weather_masked, input_interval, self.base_sample_interval_minutes)
+            weather_forecast = self.weather_forecaster(x)
+            # MSE only over masked region
+            n_masked_total = (1 - weather_mask).sum()
+            weather_loss = ((weather_forecast - weather_gt) ** 2 * (1 - weather_mask)).sum() / n_masked_total.clamp(
+                min=1
+            )
+
+        else:
+            x = self.patch_encoder(x, input_interval, self.base_sample_interval_minutes)
+            weather_loss = 0
+
         for layer in self.ss_layers:
             x = layer(x, output_interval / self.base_sample_interval_minutes)
 
-        x = self.patch_decoder(x)
         x = self.output_head(x)
 
         loss = None
@@ -113,8 +137,9 @@ class SSModel(nn.Module):
             y = norm_target(
                 mean_in=mean_in[..., : self.n_out_features], std_in=std_in[..., : self.n_out_features], y=y, ym=ym
             )
-            loss = self.loss_fn(
-                out=x, target=y, input_interval=input_interval, output_interval=output_interval, mask=ym
+            loss = (
+                self.loss_fn(out=x, target=y, input_interval=input_interval, output_interval=output_interval, mask=ym)
+                + weather_loss
             )
 
         x = denorm(

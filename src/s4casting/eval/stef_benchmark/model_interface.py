@@ -131,8 +131,12 @@ class S4ModelInterface(BacktestForecasterMixin, BacktestBatchForecasterMixin):
             pred = self.context.model_container.raw_model(
                 X,
                 xm,
-                input_interval=self.context.configuration.model.base_sample_interval_minutes,
-                output_interval=self.context.configuration.model.base_sample_interval_minutes,
+                input_interval=torch.tensor(
+                    [self.context.configuration.model.base_sample_interval_minutes] * X.shape[0], device=X.device
+                ),
+                output_interval=torch.tensor(
+                    [self.context.configuration.model.base_sample_interval_minutes] * X.shape[0], device=X.device
+                ),
             )[0]
             all_predictions.append(pred[:, -n_predict:, 0, ...])
 

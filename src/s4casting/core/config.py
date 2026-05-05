@@ -336,7 +336,9 @@ class IOConfiguration(BaseModel):
     output: str = Field(..., description="Location to save outputs.")
     load_checkpoint: str | None = Field(None, description="Path to load checkpoint from.")
     iteration: int = Field(0, description="Current iteration number.")
-    gap_skip_hours: int = Field(1, description="Number of hours to skip for gaps.")
+    gap_skip_perc: PositiveInt = Field(
+        5, ge=0, le=100, description="Percentage of context window of hours to skip for gaps."
+    )
     context_window_valid_ratio: float = Field(0.8, description="Valid ratio for input window.")
     hash_datasets: bool = Field(False, description="Whether to hash the datasets to be logged")
     to_memory: bool = Field(False, description="Whether to move the memmap'd data to CPU memory")
@@ -408,7 +410,7 @@ class ValidationConfiguration(BaseModel):
 
     split_type: Literal["time", "random", "location"] = Field("time", description="Type of split for validation.")
     start_year: PositiveInt = Field(2024, description="Start year for validation if split_type is 'time'.")
-    percentage: PositiveInt = Field(5, description="Percentage for validation.")
+    percentage: PositiveInt = Field(5, ge=0, le=100, description="Percentage for validation.")
 
 
 class TrainingConfiguration(BaseModel):

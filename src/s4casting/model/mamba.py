@@ -57,7 +57,8 @@ class Mamba(nn.Module):
         self.expand = expand
         self.d_inner = int(self.expand * self.d_model)
         self.dt_rank = math.ceil(self.d_model / 16) if dt_rank == "auto" else dt_rank
-        self.use_fast_path = use_fast_path
+        self.use_fast_path = use_fast_path and causal_conv1d_fn is not None and isinstance(rate, float)
+
         self.layer_idx = layer_idx
 
         self.in_proj = nn.Linear(self.d_model, self.d_inner * 2, bias=bias, **factory_kwargs)
@@ -184,8 +185,9 @@ class Mamba(nn.Module):
             x_dbl = self.x_proj(rearrange(x, "b d l -> (b l) d"))  # (bl d)
             dt, B, C = torch.split(x_dbl, [self.dt_rank, self.d_state, self.d_state], dim=-1)
             dt = self.dt_proj.weight @ dt.t()
-            dt = dt * rate
-            dt = rearrange(dt, "d (b l) -> b d l", l=seqlen)
+            dt = rearrange(dt, "d (b l) -> b d l", l=seqlen)  # move rearrange before rate scaling
+            dt = dt * rate.view(-1, 1, 1)  # (B,) broadcast over d_inner and L
+
             B = rearrange(B, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
             C = rearrange(C, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
             assert self.activation in ["silu", "swish"]

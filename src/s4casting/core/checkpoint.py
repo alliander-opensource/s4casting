@@ -78,6 +78,7 @@ class Checkpointer:
         )
 
         context.model_container.model.to(context.machine.torch_device)
+        context.trainer._iteration = checkpoint["iteration"]  # type: ignore[union-attr]
 
     def save(self, context: Context, iteration: int | None) -> None:
         """Save checkpoint from the model and optimizer.
