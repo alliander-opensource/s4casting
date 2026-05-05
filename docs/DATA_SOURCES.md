@@ -4,10 +4,12 @@ SPDX-FileCopyrightText: Contributors to the s4casting project
 SPDX-License-Identifier: MPL-2.0
 -->
 # DATA SOURCES
-Datasets used in this repository are publicly available open data and are licensed under Creative Commons Attribution, version 4.0 - see [LICENSE](LICENSES/CC-BY-4.0.txt) for details. Datasets can be downloaded at [Liander Open data] (https://www.liander.nl/over-ons/open-data#lianderpower).
+The datasets used in this repository are publicly available open data and are licensed under the **Creative Commons Attribution 4.0 (CC BY 4.0)** license. See [`LICENSES/CC-BY-4.0.txt`](LICENSES/CC-BY-4.0.txt) for details.
 
-This project uses multiple data sources:
+In particular, this repository uses the **Liander Power Dataset**, which is publicly accessible via the 
+[Liander Open Data portal](https://www.liander.nl/over-ons/open-data#lianderpower).
 
+This dataset consists of:
 - **Historical Power Measurements**: 5-minute averaged active power readings (in MW) collected across Alliander's electrical grid, measured in UTC timezone.  
 - **Historical Weather Data**: Sourced from providers such as Open-Meteo, offering temperature, wind, and shortwave_radiation records, measured in UTC timezone.
 - **Powerpile dataset**: Publicly available datasets containing power consumption data from various locations.                                    
