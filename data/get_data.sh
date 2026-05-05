@@ -33,4 +33,9 @@ mv /tmp/LianderPower_extract/LianderPower/data/weather.parquet "$DEST/"
 echo "Cleaning up temp files..."
 rm -rf /tmp/LianderPower_extract
 
+
+echo "Downloading Liander2024 benchmark..."
+# Liander2024 data 
+uv run hf download OpenSTEF/liander2024-energy-forecasting-benchmark --repo-type dataset --local-dir data/liander2024
+
 echo "Done! Data available at $DEST"
