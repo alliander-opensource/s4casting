@@ -4,6 +4,7 @@
 
 import warnings
 from collections import namedtuple
+
 import torch
 
 from s4casting.core.functional import nanmax, nanmin
