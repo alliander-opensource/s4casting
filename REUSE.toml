@@ -34,10 +34,10 @@ path = [
     "tests/assets/**",
     ".env.example",
 ]
-SPDX-FileCopyrightText = "2024 s4casting project"
+SPDX-FileCopyrightText = "Contributors to the s4casting project"
 SPDX-License-Identifier = "MPL-2.0"
 
 [[annotations]]
 path = "notebooks/images/80sgogo.png"
-SPDX-FileCopyrightText = "2024 s4casting project"
+SPDX-FileCopyrightText = "Contributors to the s4casting project"
 SPDX-License-Identifier = "CC-BY-4.0"

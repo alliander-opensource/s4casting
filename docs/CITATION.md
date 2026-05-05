@@ -3,6 +3,10 @@ SPDX-FileCopyrightText: Contributors to the s4casting project
 
 SPDX-License-Identifier: MPL-2.0
 -->
+# Citations
+
+If you are using s4casting in your research work, please consider citing our work using the following references.
+
 ```bibtex
 @article{LianderPower,
   author = {Michael Mesarcik and Jessica Loke and Jochem Wildeboer and Bob Lucassen},

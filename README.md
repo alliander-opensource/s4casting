@@ -59,9 +59,9 @@ Please read [CODE_OF_CONDUCT](docs/CODE_OF_CONDUCT.md),
 requests to us.
 
 ## Citation
-For citing our work please see the relevant publications [CITATION](docs/CITATION.md). 
+For citing our work please see [CITATION](docs/CITATION.md). 
 
 ## Contact
-Please read [SUPPORT](DOCS/SUPPORT.md) for how to connect and get into
+Please read [SUPPORT](docs/SUPPORT.md) for how to connect and get into
 contact with the S4Casting project.
 
