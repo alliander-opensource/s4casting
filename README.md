@@ -32,8 +32,6 @@ You can find detailed documentation for each component in the following links:
 - [Repository](docs/REPOSITORY.md)
 - [Contributing](docs/CONTRIBUTING.md)
 
-For more technical details, please also see our CIRED 2025 paper: [data/CIRED_2025_paper.pdf](data/CIRED_2025_paper.pdf)
-
 ## Example Notebooks
 
 You can find example notebooks in the `notebooks/` directory, demonstrating how to use the S4Casting toolkit for forecasting tasks.
