@@ -1,0 +1,111 @@
+[project]
+name = "s4casting"
+version = "0.1.0"
+description = "An initial tryout to get load forecast using structured state space matrices"
+authors = [
+    {name = "Alliander System Operations AI team"}
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+packages = [
+    {include="s4casting", from="src"}
+]
+
+dependencies = [
+    "numpy>=1.26.4,<3.0.0",
+    "scikit-learn>=1.5.0",
+    "matplotlib>=3.8.4",
+    "einops>=0.7.0,<1",
+    "torch>=2.2.2",
+    "pandas>=2.2.2",
+    "pyarrow>=16.1.0",
+    "pykeops==2.2.3",
+    "wandb>=0.16.6,<1",
+    "pydantic>=2.7.2",
+    "pydantic-settings>=2.2.1",
+    "tomlkit>=0.12.5,<1",
+    "httpx>=0.27.0,<1",
+    "tqdm>=4.66.4",
+    "python-dotenv>=1.0.1",
+    "plotly>=5.22.0",
+    "kaleido==0.2.1",
+    "requests>=2.31.0",
+    "ninja>=1.11.1.1",
+    "scoringrules>=0.7.1",
+    "s3fs>=2025.5.1",
+    "openmeteo-sdk>=1.21.2",
+    "openmeteo-requests>=1.7.3",
+    "requests-cache>=1.2.1",
+    "retry-requests>=2.0.0",
+    "openstef>=4.0.0a2",
+    "huggingface-hub>=1.1.7",
+    "nbformat>=5.10.4",
+    "ipykernel>=7.1.0",
+    "urllib3>=2.5.0",
+    "boto3>=1.40.49",
+    "folium>=0.20.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2.2",
+    "pytest-cov>=5.0.0",
+    "ruff==0.14.14",
+    "deptry>=0.20.0",
+    "line-profiler>=4.1.3",
+    "ty==0.0.1a23",
+    "nbstripout>=0.8.2",
+]
+
+[project.optional-dependencies]
+data = [
+    "openmeteo-requests>=1.2.0",
+    "requests-cache>=1.2.0",
+    "retry-requests>=2.0.0",
+    "scipy>=1.13.1",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+preview = true
+
+[tool.ruff.lint]
+select = ["A", "C", "E", "W", "F", "UP", "RUF", "I", "PL", "PTH", "TID252", "SIM", "ASYNC", "DTZ", "G201", "G202", "T20", "PT", "RET", "ERA", "D", "DOC", "ARG"]
+ignore = ["E402", "PLR2004", "PLR0913", "S101", "PT001", "E741","D100", "D104","RUF052", "PLR0914", "DOC502","DOC501","PLR6301", "PLR0917", "PLR6201", "PTH208", "PLR6104"]
+fixable = ["C", "E", "W", "F", "UP", "I", "PL", "RUF", "PTH", "PLC", "TID252", "SIM", "RET", "D"]
+
+[tool.ruff.lint.per-file-ignores]
+"notebooks/*.ipynb" = ["T201", "T203"]
+"src/s4casting/model/*" = ["ARG"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "--cov=s4casting --cov-report term"
+filterwarnings = [
+    "ignore",  # mute all warnings
+]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["matplotlib", "pyarrow", "ninja", "s3fs", "kaleido", "requests", "nbformat", "ipykernel", "urllib3", "huggingface-hub", "openstef", "folium"]
+DEP003 = ["openstef_beam", "openstef_core"]
+
+[tool.deptry.package_module_name_map]
+pykeops = "pykeops"
+openmeteo-requests = "openmeteo_requests"
+requests-cache = "requests_cache"
+retry-requests = "retry_requests"
+python-dotenv = "dotenv"
+
+[tool.ty.src]
+include = ["src", "scripts"]
+exclude = ["src/s4casting/model"]

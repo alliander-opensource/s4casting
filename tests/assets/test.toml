@@ -1,0 +1,80 @@
+[machine]
+device_kind = "cpu"
+ddp = false
+
+[training]
+batch_size = 64
+gradient_accumulation_steps = 1
+evaluation_batch_amount = 16
+evaluation_interval = 100
+checkpoint_interval = 100
+benchmarking_interval = 500
+maximum_steps = 500
+
+[validation]
+split_type = "random"
+percentage = 50
+
+[metrics]
+mae = true
+
+[model]
+task="prediction"
+context_window = [11]
+predict_width = 2
+predict_width_mode = "days"
+base_sample_interval_minutes = 15
+input_sample_intervals_minutes = [15]
+output_sample_intervals_minutes = [15]
+alignment = 1440
+model = "ssm"
+norm_clamp = 10
+latent_dim = 64
+
+[model.ssm]
+kernel = "s6"
+n_layers = 3
+
+[model.patch_encoder]
+arch = "linear"
+patch_size = 8
+
+[model.patch_decoder]
+arch = "linear"
+patch_size = 8 #hour resolution; 1 month patch
+
+[benchmarking]
+eval_quantiles = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+
+[benchmarking.benchmarks.LocalBenchmark]
+locations = [
+	"location_c",
+]
+thresholds = [
+		8,
+]
+predict_window_days=2
+context_window_days=11
+input_sample_interval_minutes=15
+output_sample_interval_minutes=15
+
+[benchmarking.benchmarks.StefBeamBenchmark]
+targets_file = "liander2024_targets_one_location.yaml"
+input_window_days=9
+predict_window_days=2
+input_sample_interval_minutes=15
+
+[optimizer]
+learning_rate = 1e-2
+weight_decay = 0
+gradient_clipping = 1
+
+[io]
+feature_order = ["measurements"]
+output = "out/"
+input_window_valid_ratio = 1.0
+predict_window_valid_ratio = 1.0
+
+[io.features.measurements]
+location = "/tmp/tests/output_test/external_data_wrapped.json"
+loader = "parquet"

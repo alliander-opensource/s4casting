@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Contributors to the s4casting project
+#
+# SPDX-License-Identifier: MPL-2.0
+
+version = 1
+
+[[annotations]]
+path = [
+    "src/s4casting/model/selective_scan/**",
+    "src/s4casting/model/mamba.py",
+    "src/s4casting/model/mambacpu.py",
+    "src/s4casting/model/_selective_scan_interface.py",
+    "src/s4casting/model/_s4_kernel.py",
+]
+SPDX-FileCopyrightText = "Copyright (c) 2023, Tri Dao, Albert Gu"
+SPDX-License-Identifier = "MPL-2.0"
+
+[[annotations]]
+path = [
+    ".github/**",
+    ".gitignore",
+    "Makefile",
+    "README.md",
+    "CHANGELOG.md",
+    "pyproject.toml",
+    "setup.sh",
+    "uv.lock",
+    "catalog-info.yaml",
+    "configs/**",
+    "docs/**",
+    "notebooks/**",
+    "scripts/**",
+    "data/**",
+    "tests/assets/**",
+    ".env.example",
+]
+SPDX-FileCopyrightText = "2024 s4casting project"
+SPDX-License-Identifier = "MPL-2.0"
+
+[[annotations]]
+path = "notebooks/images/80sgogo.png"
+SPDX-FileCopyrightText = "2024 s4casting project"
+SPDX-License-Identifier = "CC-BY-4.0"

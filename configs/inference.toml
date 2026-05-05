@@ -1,0 +1,83 @@
+# TODO: Incompatible with most recent changes
+[machine]
+device_kind = "cuda"
+ddp = false
+
+[run]
+seed=42069
+
+[training]
+task="prediction"
+batch_size = 32
+gradient_accumulation_steps = 1
+evaluation_interval = 1000
+checkpoint_interval = 1000
+benchmarking_interval = 10_000
+maximum_steps = 500_000
+
+[model]
+context_window = [32]
+predict_width = 2
+base_sample_interval_minutes = 15
+input_sample_intervals_minutes = [15]
+output_sample_intervals_minutes = [15]
+alignment = 1440
+model = "ssm"
+norm_clamp = 10
+latent_dim = 1024
+
+[model.loss]
+loss = "nll"
+
+[model.ssm]
+kernel = "s6"
+n_layers = 9
+
+[model.output_head]
+arch = "gmm"
+n_gaussians = 4
+
+[model.patch_encoder]
+arch = "linear"
+patch_size = 8
+
+[model.patch_decoder]
+arch = "linear"
+patch_size = 8 #hour resolution; 1 month patch
+
+[benchmarking]
+eval_quantiles = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+
+[benchmarking.benchmarks.stefbeambenchmark]
+targets_file = "liander2024_targets.yaml"
+context_window_days=32
+predict_window_days=2
+input_sample_interval_minutes=15
+
+[optimizer]
+learning_rate = 3e-5
+weight_decay = 0
+gradient_clipping = 1
+
+[io]
+feature_order = ["measurements", "weather"]
+
+output = "out/"
+# load_checkpoint = ".data/smooth-dawn-1625_checkpoint_6000.pt" # using this checkpoint for direct inference will cause the process to nan'd out, i would recommend the newest main checkpoint available at s3://bob-thijs-ml-data/datacache/misty-spaceship-2331-checkpoint_main.pt
+#load_checkpoint = "./misty-spaceship-2331-checkpoint_main.pt"
+
+[io.features.measurements]
+location = "data/measurements_plus_2024.json"
+loader = "parquet"
+
+[io.features.weather]
+location = "data/weather_openmeteo.json"
+loader = "parquet"
+nearest_neighbor = true
+n_features = 4
+subset_features = [
+    "temperature_2m",
+    "wind_speed_100m",
+    "shortwave_radiation",
+    "direct_normal_irradiance"
+]

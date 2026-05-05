@@ -1,0 +1,65 @@
+[machine]
+device_kind = "cuda"
+ddp = false
+
+[training]
+task="prediction"
+batch_size = 128
+gradient_accumulation_steps = 1
+evaluation_interval = 50
+checkpoint_interval = 1_000
+benchmarking_interval = 1_000_000
+maximum_steps = 1_000_001
+
+[model]
+context_window = [9]
+predict_width_days = 2
+base_sample_interval_minutes = 15
+input_sample_intervals_minutes = [15]
+output_sample_intervals_minutes = [15]
+alignment = 1440
+model = "ssm"
+norm_clamp = 10
+latent_dim = 256
+
+[model.loss]
+loss = "pinball"
+
+[model.ssm]
+kernel = "s6"
+n_layers = 2
+
+[model.output_head]
+arch = "quantile"
+n_gaussians = 4
+
+[model.patch_encoder]
+arch = "linear"
+patch_size = 8
+
+[model.patch_decoder]
+arch = "linear"
+patch_size = 8 #hour resolution; 1 month patch
+
+[benchmarking]
+eval_quantiles = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+
+[benchmarking.benchmarks.StefBeamBenchmark]
+targets_file = "liander2024_targets.yaml"
+context_window_days=32
+predict_window_days=2
+input_sample_interval_minutes=15
+
+[optimizer]
+learning_rate = 1e-4
+weight_decay = 0
+gradient_clipping = 1
+
+[io]
+feature_order = ["measurements"]
+output = "out/"
+
+[io.features.measurements]
+location = "data/measurements_plus_2024.json"
+loader = "parquet"
+
