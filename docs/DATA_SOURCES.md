@@ -4,6 +4,7 @@ SPDX-FileCopyrightText: Contributors to the s4casting project
 SPDX-License-Identifier: MPL-2.0
 -->
 # DATA SOURCES
+Datasets used in this repository are publicly available open data and are licensed under Creative Commons Attribution, version 4.0 - see [LICENSE](LICENSES/CC-BY-4.0.txt) for details. Datasets can be downloaded at [Liander Open data] (https://www.liander.nl/over-ons/open-data#lianderpower).
 
 This project uses multiple data sources:
 

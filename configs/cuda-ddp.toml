@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Contributors to the s4casting project
+#
+# SPDX-License-Identifier: MPL-2.0
+
 [machine]
 device_kind = "cuda"
 ddp = true
