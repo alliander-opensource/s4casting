@@ -14,8 +14,9 @@ import pandas as pd
 import requests_cache
 from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
 from retry_requests import retry
-from s4casting.data.preparation.constants import DEFAULT_PARAMS
 from tqdm import tqdm
+
+from s4casting.data.preparation.constants import DEFAULT_PARAMS
 
 dotenv.load_dotenv()
 
