@@ -43,7 +43,7 @@ You can find example notebooks in the `notebooks/` directory, demonstrating how 
 Future s4casting models will be integrated into the [LF Energy OpenSTEF project](https://github.com/OpenSTEF/openstef) in the near future. OpenSTEF provides reusable, automated machine‑learning pipelines for generating accurate and explainable short‑term grid load forecasts (up to 48 hours ahead). By integrating s4casting models into OpenSTEF, we can leverage shared infrastructure, align on common data and ML patterns, and reduce model‑specific complexity. At the same time, this integration expands the set of available forecasting models within OpenSTEF, improving overall maintainability, consistency, and reuse across implementations.
 
 ## License
-This project is licensed under the Mozilla Public License, version 2.0 - see [LICENSE](Add Link) for details.
+This project is licensed under the Mozilla Public License, version 2.0 - see [LICENSE](LICENSE) for details.
 
 ## Licenses third-party libraries
 
@@ -51,7 +51,7 @@ This project includes third-party libraries,
 which are licensed under their own respective Open-Source licenses.
 SPDX-License-Identifier headers are used to show which license is applicable.
 The concerning license files can be found in the
-[LICENSES](Add Link) directory.
+[LICENSES](LICENSES) directory.
 
 ## Contributing
 
