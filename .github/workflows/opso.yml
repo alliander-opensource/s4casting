@@ -1,0 +1,31 @@
+ name: OSPO Code Scan - for other non-public repo 
+ run-name: 'Scan "${{ inputs.repository }}" with git ref "${{ inputs.ref }}"' 
+ 
+ on:
+   push:
+     branches:
+       - patch/opso-repo
+   pull_request:
+     branches:
+       - main
+
+   workflow_dispatch:
+     inputs:
+       repository:
+         description: 'GitHub repository path (Alliander/s4casting)'
+         required: false
+         default: 'Alliander/s4casting'
+         type: string
+       ref: 
+         description: 'Optional git reference or branch to scan (main/master)'
+         default: 'main'
+         type: string
+ 
+ jobs:
+   scan:
+     uses: Alliander/ospo-code-scanner/.github/workflows/scan-reusable.yml@feature/reusable-workflow
+     secrets: inherit
+     # Alternatively, provide GH_REPOSITORY_READ_PERMISSIONS secret with the repo:read scope for the target repository.
+     with:
+       repository: ${{ inputs.repository }}
+       ref: ${{ inputs.ref }}
