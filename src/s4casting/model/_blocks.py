@@ -142,6 +142,7 @@ class S6Block(nn.Module):
         self.d_model = d_model
         self.layer = Mamba(d_model=d_model, d_state=16, d_conv=4, expand=2, **layer_args)
         self.output_linear = nn.Sequential(nn.Linear(self.d_model, self.d_model * 2, bias=True), nn.GLU(dim=-1))
+        self.mixer = nn.Linear(3072, 3072, bias=True)
 
     def forward(self, x, rate=1, lengths=None, **kwargs):
         """Forward pass of the S6Block.
@@ -159,6 +160,7 @@ class S6Block(nn.Module):
         y = self.layer(x, rate=rate)
         y = F.gelu(y)
         y = self.output_linear(y)
+        y = self.mixer(y.swapaxes(1, 2)).swapaxes(1, 2)
         return y, None
 
 

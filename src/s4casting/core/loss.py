@@ -99,13 +99,13 @@ class SubsetNLLLoss(nn.Module):
         target = rearrange(
             target * mask,
             "b (t s) f  -> b t s f",
-            s=output_interval // input_interval,
+            s=1 if input_interval == output_interval else output_interval // input_interval,
             f=target.shape[-1],
         ).unsqueeze(-1)
         mask = rearrange(
             mask,
             "b (t s) f  -> b t s f",
-            s=output_interval // input_interval,
+            s=1 if input_interval == output_interval else output_interval // input_interval,
             f=mask.shape[-1],
         )
 
@@ -115,7 +115,7 @@ class SubsetNLLLoss(nn.Module):
             var=sigma**2,
         )
         nll = -torch.logsumexp(logpi + nll, dim=-1)[mask]
-        return nll.mean() + self.sigma_regularisation_factor * (out[..., 1].clone().pow(2).mean())
+        return nll.mean() + self.sigma_regularisation_factor * (out[..., 1][mask[..., 0]].clone().pow(2).mean())
 
 
 class SubsetPinballLoss(nn.Module):

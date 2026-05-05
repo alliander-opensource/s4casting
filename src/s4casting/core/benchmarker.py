@@ -92,6 +92,7 @@ class Benchmarker:
         ) // self.bench_config.input_sample_interval_minutes
         location_dataset = PredictionTaskDataset(
             dataset,
+            context.batcher.benchmark.context_window * 24 * 60 // self.bench_config.input_sample_interval_minutes,  # type: ignore[attr-defined]
             self.bench_config.predict_dim,  # type: ignore[attr-defined]
             predict_window,
         )

@@ -89,7 +89,7 @@ class Trainer:
         while self._iteration < self._config.maximum_steps:
             self.epoch = self._iteration // self._config.n_samples_per_epoch
             if context.machine.ddp:
-                context.batcher.train_loader.batch_sampler.set_epoch(self.epoch)  # type: ignore[possibly-missing-attribute]
+                context.batcher.train_loader.sampler.set_epoch(self.epoch)  # type: ignore[possibly-missing-attribute]
             for X_all, sample_config in context.batcher.train_loader:  # type: ignore[attr-defined]
                 if self._iteration > 0 and self._main_process:
                     # Only needed after first set of iterations for the main process
@@ -125,14 +125,17 @@ class Trainer:
             X, Xm, Y, Ym = (
                 x[micro_step * B : (micro_step + 1) * B].float().to(context.machine.torch_device) for x in X_all
             )
+            input_sample_interval_minutes = sample_config.sample_interval_minutes[
+                micro_step * B : (micro_step + 1) * B
+            ].to(context.machine.torch_device)
 
             output_interval = select_rate(
-                sample_config.sample_interval_minutes, context.configuration.model.output_sample_intervals_minutes
+                input_sample_interval_minutes, context.configuration.model.output_sample_intervals_minutes
             )  # ty: ignore[possibly-missing-attribute]
             _, loss = context.model_container.model(
                 X,
                 Xm,
-                sample_config.sample_interval_minutes,
+                input_sample_interval_minutes,
                 output_interval,
                 Y,
                 Ym,

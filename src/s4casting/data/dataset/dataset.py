@@ -234,7 +234,7 @@ class TimeseriesDataset:
         return torch.tensor(sample), SampleConfig(
             int(just_location(t)),
             self.out_sample_interval / 60,
-            self.context_window / (24 * 60 * 60),
+            self.context_window / self.out_sample_interval,
             int(just_time(t)),
             sample.shape[1],
         )
