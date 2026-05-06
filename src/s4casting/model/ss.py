@@ -61,11 +61,6 @@ class SSModel(nn.Module):
         self.output_head = output_head
         self.latent_dim = latent_dim
         self.base_sample_interval_minutes = base_sample_interval_minutes
-        self.mask_token = torch.nn.Parameter(
-            torch.randn(
-                1,
-            )
-        )
 
         Kernel = {"s4": S4Block, "s6": S6Block, "gru": GruBlock}[kernel]
         self.ss_layers = nn.ModuleList([
@@ -98,7 +93,6 @@ class SSModel(nn.Module):
             clamp=self.norm_clamp,
             dims=torch.arange(x.shape[-1] - 3 * isinstance(self.patch_encoder, SeperateLocTime)),
         )
-        x = torch.where(xm == 0, torch.clamp(self.mask_token, min=-self.norm_clamp, max=self.norm_clamp), x)
         x = self.patch_encoder(
             x, input_interval / self.base_sample_interval_minutes, output_interval // input_interval
         )  # B T F -> B T/P E
