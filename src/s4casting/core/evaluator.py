@@ -64,8 +64,8 @@ class Evaluator:
             prediction, loss = evaluation_model(X, Xm, sample_config.sample_interval_minutes, output_interval, Y, Ym)
 
             context.validation_loss = loss.item()
-            context.input_validation_sample_rate = sample_config.sample_interval_minutes
-            context.output_validation_sample_rate = output_interval
+            context.input_validation_sample_rate = sample_config.sample_interval_minutes[0].item()
+            context.output_validation_sample_rate = output_interval[0].item()
 
             self.head_evaluator.report(
                 context=context,
@@ -77,9 +77,20 @@ class Evaluator:
                 loss=context.validation_loss,
                 iteration=iteration,
                 report_type="evaluation",
-                sample_config=sample_config,
-                output_interval=output_interval,
-                n_day_ahead=sample_config.predict_window_days[0].item(),
+                output_interval=output_interval[0].item(),
+                n_day_ahead=int(
+                    (sample_config.predict_window_samples[0].item() * sample_config.sample_interval_minutes[0].item())
+                    // (24 * 60)
+                ),
+                predict_window_days=int(
+                    (sample_config.predict_window_samples[0].item() * sample_config.sample_interval_minutes[0].item())
+                    // (24 * 60)
+                ),
+                context_window_days=int(
+                    (sample_config.context_window_samples[0].item() * sample_config.sample_interval_minutes[0].item())
+                    // (24 * 60)
+                ),
+                input_interval=sample_config.sample_interval_minutes[0].item(),
             )
 
             context.model_container.model.train(mode=True)

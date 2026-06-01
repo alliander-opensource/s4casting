@@ -10,6 +10,34 @@ from pydantic import NonNegativeFloat
 from torch import nn
 
 
+class CompositeLoss(nn.Module):
+    """Combines named scalar loss terms with per-component weights.
+
+    Weights are specified in config under ``model.loss.components``.  Any key
+    present in the ``losses`` dict passed to ``forward`` that has no entry in
+    ``weights`` is silently ignored (opt-in model).  Any configured key that is
+    absent from ``losses`` at call time is also skipped gracefully, which covers
+    cases where a loss term is only active for certain inputs (e.g. weather loss
+    requires multi-feature data).
+
+    Adding a new loss term requires:
+      1. One line in the model forward: ``_losses["new_term"] = value``
+      2. One config entry: ``components = {primary = 1.0, new_term = 0.5}``
+    """
+
+    def __init__(self, weights: dict[str, float]):
+        """Init doctring for linting."""
+        super().__init__()
+        self.weights = weights
+
+    def forward(self, losses: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Return the weighted sum of all loss terms present in both dicts."""
+        total = sum(self.weights[k] * v for k, v in losses.items() if k in self.weights and self.weights[k] != 0.0)
+        if isinstance(total, int):
+            raise ValueError(f"No active loss terms found. Configured: {self.weights}, received: {list(losses)}")
+        return total
+
+
 class SoftClipLoss(nn.Module):
     """Soft clipping loss function."""
 
@@ -61,8 +89,8 @@ class SubsetNLLLoss(nn.Module):
         self,
         out: torch.Tensor,
         target: torch.Tensor,
-        input_interval: int,
-        output_interval: int,
+        input_interval: torch.Tensor,
+        output_interval: torch.Tensor,
         mask: torch.Tensor | None = None,
     ):
         """Calculates the nll loss assuming a out is a tensor containing GMM parameters.
@@ -74,8 +102,8 @@ class SubsetNLLLoss(nn.Module):
                 (batch_size, seq_len, n_out_features, <n_gaussians> or <quantile_values>, <mu, pi, sigma> or 1).
             target (torch.Tensor): Tensor with one dimension less than the GMM parameters.
                 Shape: (batch_size, seq_len, n_out_features).
-            input_interval (int): Input sample rate of eval step.
-            output_interval (int): Output sample rate of eval step.
+            input_interval (torch.Tensor): Input sample rate of eval step.
+            output_interval (torch.Tensor): Output sample rate of eval step.
             mask (torch.Tensor, optional): Tensor determining on which values to calculate the loss.
                 1 = calculate, 0 = ignore. Shape: same as `target`. If no mask is supplied,
                 the loss will be calculated on the entire signal.
@@ -95,17 +123,22 @@ class SubsetNLLLoss(nn.Module):
         # Note: clone is necessary for gradient flow
         logpi, sigma, mu = (t.unsqueeze(2).clone() for t in out.unbind(dim=-1))  # -> (B, T, 1, 1, D)
 
+        # Check that the ratio between input and output intervals are the same, such that the reshape is consistent
+        ratio = output_interval // input_interval
+        if not all(ratio[0] == r for r in ratio):
+            raise ValueError("Mixed ratios of sample rates in model forward")
+
         # reshape such that a number of samples fit inside each distribution
         target = rearrange(
             target * mask,
             "b (t s) f  -> b t s f",
-            s=output_interval // input_interval,
+            s=ratio[0].item(),
             f=target.shape[-1],
         ).unsqueeze(-1)
         mask = rearrange(
             mask,
             "b (t s) f  -> b t s f",
-            s=output_interval // input_interval,
+            s=ratio[0].item(),
             f=mask.shape[-1],
         )
 
@@ -144,8 +177,8 @@ class SubsetPinballLoss(nn.Module):
         self,
         out: torch.Tensor,
         target: torch.Tensor,
-        input_interval: int,  # noqa
-        output_interval: int,  # noqa
+        input_interval: torch.Tensor,  # noqa
+        output_interval: torch.Tensor,  # noqa
         mask: torch.Tensor | None = None,
     ):
         """Calculates the pinball loss.
@@ -154,7 +187,7 @@ class SubsetPinballLoss(nn.Module):
             out (torch.Tensor): Model output of shape (batch_size, seq_len, n_out_features, <quantile_values>,).
             target (torch.Tensor): Target tensor of shape (batch_size, seq_len, n_out_features).
             mask (torch.Tensor, optional): Mask tensor determining on which values to calculate the loss.
-            input_interval (int): Input sample rate of eval step. (Not used)
+            input_interval (torch.Tensor): Input sample rate of eval step. (Not used)
             output_interval (int): Output sample rate of eval step. (Not used)
 
         Returns:

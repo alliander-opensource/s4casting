@@ -87,13 +87,19 @@ class Benchmarker:
             context.batcher.benchmark.datas,  # type: ignore[attr-defined]
             self.bench_config.input_sample_interval_minutes * 60,
         )
-        predict_window = (
+        predict_window_samples = (
             self.bench_config.predict_window_days * 24 * 60
+        ) // self.bench_config.input_sample_interval_minutes
+
+        context_window_samples = (
+            self.bench_config.context_window_days * 24 * 60
         ) // self.bench_config.input_sample_interval_minutes
         location_dataset = PredictionTaskDataset(
             dataset,
+            context_window_samples,
+            0,
             self.bench_config.predict_dim,  # type: ignore[attr-defined]
-            predict_window,
+            predict_window_samples,
         )
 
         times = get_timestamps(
@@ -138,10 +144,12 @@ class Benchmarker:
                 context.benchmark_location = location
                 (X, xm, Y, ym), times, sign, sample_config = self.sample_dataset(location, context)
                 output_interval = (
-                    self.bench_config.output_sample_interval_minutes
+                    torch.ones_like(sample_config.sample_interval_minutes)
+                    * self.bench_config.output_sample_interval_minutes
                     if self.bench_config.output_sample_interval_minutes is not None
                     else sample_config.sample_interval_minutes
                 )
+
                 prediction, loss = run_in_batches(
                     benchmarking_model,
                     context.configuration.training.batch_size,
@@ -162,8 +170,22 @@ class Benchmarker:
                     times=times,
                     sign=sign,
                     report_type="benchmark",
-                    sample_config=sample_config,
-                    output_interval=output_interval,
+                    predict_window_days=int(
+                        (
+                            sample_config.predict_window_samples[0].item()
+                            * sample_config.sample_interval_minutes[0].item()
+                        )
+                        // (24 * 60)
+                    ),
+                    context_window_days=int(
+                        (
+                            sample_config.context_window_samples[0].item()
+                            * sample_config.sample_interval_minutes[0].item()
+                        )
+                        // (24 * 60)
+                    ),
+                    input_interval=sample_config.sample_interval_minutes[0].item(),
+                    output_interval=output_interval[0].item(),
                     n_day_ahead=self.bench_config.n_day_ahead,
                 )
             context.model_container.model.train(mode=True)

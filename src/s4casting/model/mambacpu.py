@@ -135,8 +135,13 @@ class Mamba(nn.Module):
         x_dbl = self.x_proj(rearrange(x, "b d l -> (b l) d"))  # (bl d)
         dt, B, C = torch.split(x_dbl, [self.dt_rank, self.d_state, self.d_state], dim=-1)
         dt = self.dt_proj.weight @ dt.t()
-        dt = dt * rate
-        dt = rearrange(dt, "d (b l) -> b d l", l=seqlen)
+
+        if isinstance(rate, torch.Tensor):
+            dt = rearrange(dt, "d (b l) -> b d l", l=seqlen)
+            dt = dt * rate.view(-1, 1, 1)
+        elif isinstance(rate, float):
+            dt = dt * rate
+            dt = rearrange(dt, "d (b l) -> b d l", l=seqlen)
         B = rearrange(B, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
         C = rearrange(C, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
         assert self.activation in ["silu", "swish"]

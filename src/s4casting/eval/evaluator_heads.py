@@ -9,7 +9,6 @@ from s4casting.core.context import Context
 from s4casting.core.distributions import gmm_to_quantiles
 from s4casting.core.hooks import CommonHooks, TrainingHooks
 from s4casting.data.dataset.interface import get_ordered_feature_names
-from s4casting.data.utils import SampleConfigBatch
 from s4casting.eval.metrics import Metrics
 from s4casting.visualisation import plot_quantiles
 
@@ -105,7 +104,9 @@ class EvaluatorHead:
         loss: float,
         iteration: int,
         report_type: str,
-        sample_config: SampleConfigBatch,
+        context_window_days: int,
+        predict_window_days: int,
+        input_interval: int,
         output_interval: int,
         n_day_ahead: int,
         location: str | None = None,
@@ -129,7 +130,9 @@ class EvaluatorHead:
             report_type (str): Type of report (e.g., "benchmark", "evaluation", "inference").
             output_interval (int): Output sample rate of eval step.
             n_day_ahead (int): Days ahead for the forecast (different from prediction width).
-            sample_config (SampleConfigBatch): Sample configuration.
+            context_window_days (int): Context window in days.
+            predict_window_days (int): Prediction  window in days.
+            input_interval (int): Input sample interval.
         """
         if self.head_type == "gmm":
             logpi, sigma, mu = (x for x in prediction.unbind(dim=-1))  # (B, T, G, 3)
@@ -146,9 +149,9 @@ class EvaluatorHead:
             Y=Y,
             Ym=Ym,
             quantiles=prediction,
-            input_window_days=sample_config.context_window_days - sample_config.predict_window_days[0].item(),
+            input_window_days=context_window_days - predict_window_days,
             n_day_ahead=n_day_ahead,
-            input_interval=sample_config.sample_interval_minutes,
+            input_interval=input_interval,
             output_interval=output_interval,
         )
 
@@ -161,8 +164,8 @@ class EvaluatorHead:
         )
         metrics = Metrics(
             output_sample_interval_minutes=output_interval,
-            prediction_window_days=int(sample_config.predict_window_days[0].item()),
-            input_sample_interval_minutes=sample_config.sample_interval_minutes,
+            predict_window_days=predict_window_days,
+            input_sample_interval_minutes=input_interval,
             climits=climits,  # type: ignore[arg-type]
             quantiles=quantiles,
             Y=Y,
@@ -180,10 +183,10 @@ class EvaluatorHead:
             Y,
             Ym,
             times,
-            sample_config.sample_interval_minutes,
+            input_interval,
             output_interval,
             report_type,
-            "short" if sample_config.sample_interval_minutes == output_interval else "medium",
+            "short" if input_interval == output_interval else "medium",
             feature_names=get_ordered_feature_names(context.configuration),
         )
 
