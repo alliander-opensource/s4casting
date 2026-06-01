@@ -231,20 +231,25 @@ class GruBlock(nn.Module):
 class SequenceResidualBlock(nn.Module):
     """Sequence Residual Block with LayerNorm and S4/GRU layer."""
 
-    def __init__(self, d_input, kernel, backend="keops"):
+    def __init__(self, d_input, kernel, backend="keops", mixer_size=None):
         """Initialize the SequenceResidualBlock.
 
         Args:
             d_input (int): Dimension of the input.
             kernel (nn.Module): Kernel layer (S4Block or GruBlock).
             backend (str): Backend to use for the kernel.
+            mixer_size (int | None): maximum context width size to mix along.
         """
         super().__init__()
+        self.mixer_size = mixer_size
         self.layer = kernel(d_input, backend)
         self.norm = torch.nn.LayerNorm((d_input,))
+        self.mixer = nn.Identity() if mixer_size is None else nn.Linear(mixer_size, mixer_size)
 
     def forward(self, x, rate=1, **kwargs):
         """Forward pass of the SequenceResidualBlock.
+
+        Note mixer is applied in time if mixer time is not None.
 
         Args:
             x (torch.Tensor): Input tensor of shape (batch_size, seq_len, d_input).
@@ -257,4 +262,5 @@ class SequenceResidualBlock(nn.Module):
         y = x
         y = self.norm(rearrange(y, "b ... d -> b (...) d")).view(y.shape)
         y, _new_state = self.layer(y, rate=rate, **kwargs)
+        y = self.mixer(y.swapaxes(1, 2)).swapaxes(1, 2)
         return x + y
