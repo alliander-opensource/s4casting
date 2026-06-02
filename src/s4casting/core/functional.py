@@ -132,14 +132,16 @@ def resample(data: torch.Tensor, patch_size, maxpool=True) -> torch.Tensor:
 
 
 def select_rate(
-    input_rate: int,
+    input_rate: torch.Tensor,
     output_sample_intervals_minutes: list[int],
-) -> int:
+    transcoding: bool = False,
+) -> torch.Tensor:
     """Randomly choose an output sample interval that is greater than or equal to the given input sample interval.
 
     Args:
         input_rate (int): input_sample rate for batch.
         output_sample_intervals_minutes(list[int]): Possible output sample rate.
+        transcoding (bool): Determines if input and output rates can be different.
 
     Returns:
         int : selected sample rate.
@@ -147,6 +149,11 @@ def select_rate(
     Raises:
         ValueError: If no valid output sample interval exists.
     """
+    if not transcoding:
+        return input_rate
+
+    raise ValueError("Transcoding currently unsupported.")
+
     valid_rates = [rate for rate in output_sample_intervals_minutes if rate >= input_rate]
 
     if not valid_rates:

@@ -51,7 +51,7 @@ def train(config: Configuration):
 
     optimizer = fc.provide_optimizer(config.optimizer, model_container.raw_model.parameters())
     scheduler = fc.provide_scheduler(config.scheduler, optimizer)
-    trainer = fc.provide_trainer(config=config.training, io=config.io, optimizer=config.optimizer, machine=machine)
+    trainer = fc.provide_trainer(config=config.training, optimizer=config.optimizer, machine=machine)
     checkpointer = fc.provide_checkpointer(config.io, trainer.hooks)
     evaluator_head = fc.provide_evaluator_head(config.model, trainer.hooks)
     evaluator = fc.provide_evaluation(trainer.hooks, evaluator_head)

@@ -3,13 +3,14 @@
 # SPDX-License-Identifier: MPL-2.0
 
 # type: ignore
+import warnings
 from copy import deepcopy
 
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from s4casting.core.config import DTYPE_MAP, IOConfiguration, ModelConfiguration
-from s4casting.core.loss import SoftClipLoss, SubsetNLLLoss, SubsetPinballLoss
+from s4casting.core.loss import CompositeLoss, SoftClipLoss, SubsetNLLLoss, SubsetPinballLoss
 from s4casting.core.machine import Machine
 from s4casting.core.model_container import ModelContainer
 from s4casting.model._encoders import PatchDecoder, PatchEncoder, SeperateLocTime, SSEncoder
@@ -87,32 +88,41 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
         len(x.subset_features) if x.subset_features else x.n_features
         for x in {k.split("_")[0]: v for k, v in io_config.features.items()}.values()
     )
+    has_time = any(v.loader == "time" for v in io_config.features.values())
+    n_data_features = n_features - 3 * has_time
+    if config.patch_encoder.patch_size != 1 and n_data_features > config.n_out_features:
+        warnings.warn(
+            f"Weather auxiliary loss is disabled because patch_size="
+            f"{config.patch_encoder.patch_size} > 1. Set patch_size=1 to enable it.",
+            UserWarning,
+            stacklevel=2,
+        )
+    n_weather_features = max(0, n_data_features - config.n_out_features) if config.patch_encoder.patch_size == 1 else 0
     latent_dim = config.transformer.latent_dim if config.model == "transformer" else config.latent_dim
 
     if config.patch_encoder.arch == "linear":
         if config.model == "transformer":
             patch_encoder = PatchEncoder(
                 latent_dim,
-                (n_features - 3 * any(v.loader == "time" for v in io_config.features.values()))
-                * 2,  # to accept target + mask
+                n_data_features * 2,  # to accept target + mask
                 config.patch_encoder.patch_size,
             )
         else:
             patch_encoder = PatchEncoder(
                 latent_dim,
-                n_features - 3 * any(v.loader == "time" for v in io_config.features.values()),
+                n_data_features,
                 config.patch_encoder.patch_size,
             )
 
     elif config.patch_encoder.arch == "ss":
         patch_encoder = SSEncoder(
             latent_dim,
-            n_features - 3 * any(v.loader == "time" for v in io_config.features.values()),
+            n_data_features,
             n_layers=config.patch_encoder.n_layers,
             patch_size=config.patch_encoder.patch_size,
         )
 
-    if any(v.loader == "time" for v in io_config.features.values()):
+    if has_time:
         patch_encoder = SeperateLocTime(patch_encoder)
 
     patch_decoder = PatchDecoder(
@@ -137,6 +147,7 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
         output_head = QuantileHead(latent_dim, config.n_out_features, config.output_head.quantile_values)
 
     loss_fn = _build_loss_fn(config)
+    composite_loss = CompositeLoss(config.loss.components)
 
     assert config.loss.loss in ["nll", "mse", "pinball"], f"Loss function {config.loss.loss} not implemented"
 
@@ -154,14 +165,17 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
             n_layer=config.ssm.n_layers,
             kernel=config.ssm.kernel,
             backend="keops" if machine.torch_device_kind == "cuda" else "naive",
+            mixer_size=config.ssm.mixer_size,
             patch_size=config.patch_encoder.patch_size,
             norm_clamp=config.norm_clamp,
             norm_eps=config.norm_eps,
             loss_fn=loss_fn,
+            composite_loss=composite_loss,
             output_head=output_head,
             patch_encoder=patch_encoder,
             patch_decoder=patch_decoder,
             base_sample_interval_minutes=config.base_sample_interval_minutes,
+            n_weather_features=n_weather_features,
         )
 
     elif config.model == "transformer":

@@ -21,7 +21,7 @@ class Metrics:
     def __init__(
         self,
         Y: torch.Tensor,
-        prediction_window_days: int,
+        predict_window_days: int,
         model_config: ModelConfiguration,
         metrics_config: MetricsConfiguration,
         input_sample_interval_minutes: int,
@@ -42,7 +42,7 @@ class Metrics:
             quantile_values (torch.Tensor): quantile values.
             Y (torch.Tensor): Ground truth tensor.
             Y (int): prediction window size.
-            prediction_window_days (int): prediction window size.
+            predict_window_days (int): prediction window size.
             model_config (ModelConfiguration): Model configuration for setting up config
             metrics_config (MetricsConfiguration): Metrics configuration for setting up config
             sign (str): Specifies whether to calculate metrics for "LDN", "ODN", or "BOTH".
@@ -78,7 +78,7 @@ class Metrics:
         self.ldn_index = np.argwhere(
             np.array(self.model_config.output_head.quantile_values) == mape_ldn_quantile_value
         )[0][0]
-        self.sufficient_days = prediction_window_days >= model_config.days_per_month
+        self.sufficient_days = predict_window_days >= model_config.days_per_month
 
         # check whether input and outputs rates are the same
         # as CRPS, and peak metrics require that they are

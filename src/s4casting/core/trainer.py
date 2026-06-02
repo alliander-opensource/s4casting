@@ -7,7 +7,7 @@ import math
 import torch
 import torch.distributed as dist
 
-from s4casting.core.config import IOConfiguration, OptimizerConfiguration, TrainingConfiguration
+from s4casting.core.config import OptimizerConfiguration, TrainingConfiguration
 from s4casting.core.context import Context
 from s4casting.core.functional import select_rate
 from s4casting.core.hooks import TrainingHooks
@@ -20,7 +20,6 @@ class Trainer:
     def __init__(
         self,
         config: TrainingConfiguration,
-        io: IOConfiguration,
         optimizer: OptimizerConfiguration,
         machine: Machine,
         gradient_accumulation_steps: int,
@@ -29,15 +28,13 @@ class Trainer:
 
         Args:
             config (TrainingConfiguration): Training configuration.
-            io (IOConfiguration): IO configuration.
             optimizer (OptimizerConfiguration): Optimizer configuration.
             machine (Machine): Machine information.
             gradient_accumulation_steps (int): Number of gradient accumulation steps.
         """
         self._config = config
-        self._io = io
         self._optimizer = optimizer
-        self._iteration = self._io.iteration
+        self._iteration = self._config.iteration
         self._scores = {}
         self._gradient_accumulation_steps = gradient_accumulation_steps
         self._evaluation_interval = config.evaluation_interval
@@ -81,7 +78,7 @@ class Trainer:
         """
         self.hooks.start.call(context)
 
-        # Baseline benchmark at iteration 0 so wandb has a pre-training reference point.
+        # Baseline benchmark at iteration 0 for zero-shot performance.
         if self._iteration == 0 and self._main_process:
             self.hooks.benchmark.call(context, 0)
             self.hooks.stef_beam.call(context, 0)
@@ -125,14 +122,13 @@ class Trainer:
             X, Xm, Y, Ym = (
                 x[micro_step * B : (micro_step + 1) * B].float().to(context.machine.torch_device) for x in X_all
             )
+            input_interval = sample_config.sample_interval_minutes[micro_step * B : (micro_step + 1) * B]
 
-            output_interval = select_rate(
-                sample_config.sample_interval_minutes, context.configuration.model.output_sample_intervals_minutes
-            )  # ty: ignore[possibly-missing-attribute]
+            output_interval = select_rate(input_interval, context.configuration.model.output_sample_intervals_minutes)  # ty: ignore[possibly-missing-attribute]
             _, loss = context.model_container.model(
                 X,
                 Xm,
-                sample_config.sample_interval_minutes,
+                input_interval,
                 output_interval,
                 Y,
                 Ym,

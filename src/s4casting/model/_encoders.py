@@ -36,11 +36,11 @@ class SSEncoder(nn.Module):
             SequenceResidualBlock(latent_dim, _kernel, backend=backend) for _ in range(n_layers)
         ])
 
-    def forward(self, x, sample_rate_conversion_factor, patch_size):
+    def forward(self, x, input_interval, output_interval):
         x = self.expand(x)
         for layer in self.ss_layers:
-            x = layer(x, sample_rate_conversion_factor)
-        return x[:, patch_size - 1 :: patch_size, :]
+            x = layer(x, input_interval / output_interval)
+        return x
 
 
 class PatchEncoder(nn.Module):

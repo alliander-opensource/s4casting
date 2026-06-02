@@ -116,6 +116,14 @@ class LossConfiguration(BaseModel):
         0.0,
         description="Prevents sigma from growing too big",
     )
+    components: dict[str, float] = Field(
+        default_factory=lambda: {"primary": 1.0},
+        description=(
+            "Named loss components and their scalar weights. "
+            "Keys must match terms accumulated in the model forward pass. "
+            "Example: {primary = 1.0, weather = 0.5}"
+        ),
+    )
 
 
 class ChronosConfiguration(BaseModel):
@@ -151,6 +159,10 @@ class SSMConfiguration(BaseModel):
     n_layers: PositiveInt = Field(
         4,
         description="Number of stacked layers in the SSM/GRU block.",
+    )
+    mixer_size: PositiveInt | None = Field(
+        None,
+        description="Whether to do time domain mixing, limits maximum model context width.",
     )
 
 
@@ -335,11 +347,24 @@ class IOConfiguration(BaseModel):
     features: dict[str, DatasetConfiguration] = Field(..., description="Dictionary of (feature) datasets.")
     output: str = Field(..., description="Location to save outputs.")
     load_checkpoint: str | None = Field(None, description="Path to load checkpoint from.")
-    iteration: int = Field(0, description="Current iteration number.")
-    gap_skip_hours: int = Field(1, description="Number of hours to skip for gaps.")
+    gap_skip_perc: PositiveInt = Field(
+        5, ge=0, le=100, description="Percentage of context window of hours to skip for gaps."
+    )
     context_window_valid_ratio: float = Field(0.8, description="Valid ratio for input window.")
     hash_datasets: bool = Field(False, description="Whether to hash the datasets to be logged")
     to_memory: bool = Field(False, description="Whether to move the memmap'd data to CPU memory")
+    interval_context_limits: dict[int, dict[str, int]] = Field(
+        default={
+            5: {"min_days": 7, "max_days": 10},
+            10: {"min_days": 7, "max_days": 14},
+            15: {"min_days": 11, "max_days": 32},
+            30: {"min_days": 16, "max_days": 64},
+            60: {"min_days": 16, "max_days": 64},
+            1440: {"min_days": 32, "max_days": 364},
+            10080: {"min_days": 64, "max_days": 364},
+        },
+        description="Pairs of valid interval and min max days in the context windows",
+    )
 
 
 class StefBeamBenchmark(BaseModel):
@@ -419,6 +444,11 @@ class TrainingConfiguration(BaseModel):
         description="Training task : 'prediction' (fixed window), "
         "'masking' (random masking), or 'randomprediction' (random prediction window percentage).",
     )
+    max_retries: NonNegativeInt = Field(
+        10,
+        description="Max retries for rejection sampling, invalid due to changing prediction/context windows."
+        "Default 0 means no rejection sampling.",
+    )
 
     gradient_accumulation_steps: int = Field(2, description="Number of gradient accumulation steps.")
     batch_size: int = Field(32, description="Batch size for training.")
@@ -429,6 +459,7 @@ class TrainingConfiguration(BaseModel):
     n_samples_per_epoch: PositiveInt | None = Field(
         default=None, init=False, description="Populated at runtime with the number of samples per epoch."
     )
+    iteration: int = Field(1, description="Current iteration number. Set to 0 for zero-shot performance.")
 
 
 def get_data_range_spans(dataset_dict: DatasetConfiguration) -> tuple[datetime, datetime]:
