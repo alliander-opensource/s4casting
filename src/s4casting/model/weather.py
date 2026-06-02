@@ -78,7 +78,7 @@ class WeatherAuxTask(nn.Module):
         Returns:
             Scalar MSE loss over the masked region; zero when n_weather_features=0.
         """
-        if self.n_weather_features == 0:
+        if weather_gt.shape[2] == 0:
             return x_enc.new_zeros(())
 
         weather_forecast = self.weather_forecaster(x_enc)  # (B, T, C)
