@@ -18,7 +18,7 @@ dependencies = [
     "einops>=0.7.0,<1",
     "torch>=2.2.2",
     "pandas>=2.2.2",
-    "pyarrow>=16.1.0",
+    "pyarrow>=23.0.1",
     "pykeops==2.2.3",
     "wandb>=0.16.6,<1",
     "pydantic>=2.7.2",
