@@ -16,8 +16,8 @@ benchmarking_interval = 1_000_000
 maximum_steps = 1_000_001
 
 [model]
-context_window = [9]
-predict_width_days = 2
+context_window = [11]
+predict_width = 2
 base_sample_interval_minutes = 15
 input_sample_intervals_minutes = [15]
 output_sample_intervals_minutes = [15]
@@ -64,7 +64,7 @@ feature_order = ["measurements"]
 output = "out/"
 gap_skip_hours = 1
 
-[io.features.measurements_cdb]
+[io.features.measurements]
 location = "data/LianderPower/"
 loader = "croissant"
 
