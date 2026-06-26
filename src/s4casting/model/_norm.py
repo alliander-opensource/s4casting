@@ -58,7 +58,7 @@ def norm(
     x[:, :, dims] = (x[:, :, dims] - mean[:, :, dims]) / std[:, :, dims]
     x = torch.where(xm.bool(), x, x_in)
     if clamp is not None:
-        x = x.clamp(min=-clamp, max=clamp)
+        x[:, :, dims] = x[:, :, dims].clamp(min=-clamp, max=clamp)
     x = torch.nan_to_num(x)
     return x, mean, std
 
