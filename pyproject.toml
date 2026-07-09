@@ -50,7 +50,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.2.2",
-    "pytest-cov>=5.0.0",
+    "pytest-cov>=7.1.0",
     "ruff==0.14.14",
     "deptry>=0.20.0",
     "line-profiler>=5.0.2",
