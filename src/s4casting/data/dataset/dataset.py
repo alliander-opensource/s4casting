@@ -118,7 +118,7 @@ def load_external_data(file_path: str):
             start_timestamp = df.index.min().timestamp()
             data = np.float32(df["measurements"].to_numpy().reshape([-1, 1]))
 
-            all_sideloaded_spans.append([sum(len(x) for x in all_sideloaded_data), i, start_timestamp, len(data)])
+            all_sideloaded_spans.append([sum(len(x) for x in all_sideloaded_data), i, start_timestamp, len(data)])  # ty: ignore[invalid-argument-type]
             all_sideloaded_data.append(data)
     if not all_sideloaded_data:
         return None
@@ -373,7 +373,7 @@ def hash_all_memmaps(combined_dataset: dict[str, NumpyData]) -> str:
         str: A single SHA-256 hex digest representing all memmaps in the dataset.
     """
     h = hashlib.sha256()
-    hashes = [hash_memmap(ds.data) for ds in combined_dataset.values()]
+    hashes = [hash_memmap(ds.data) for ds in combined_dataset.values()]  # ty: ignore[invalid-argument-type]
     for hmem in sorted(hashes):
         h.update(hmem.encode())
     return h.hexdigest()
