@@ -22,16 +22,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
+      # actions/setup-python is not on the enterprise action allowlist, so we
+      # install uv via its standalone installer (no Python needed) and let uv
+      # provision the interpreter itself.
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip build wheel setuptools
-          python -m pip install uv
-          uv venv
+          uv python install ${{ matrix.python-version }}
           uv sync
 
       - name: Check
