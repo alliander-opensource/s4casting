@@ -12,7 +12,8 @@ on:
 
 jobs:
   python-checks:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: managed
     strategy:
       fail-fast: false
       matrix:
