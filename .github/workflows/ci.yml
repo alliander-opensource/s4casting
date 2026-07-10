@@ -20,11 +20,11 @@ jobs:
         python-version: ["3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      # actions/setup-python is not on the enterprise action allowlist, so we
-      # install uv via its standalone installer (no Python needed) and let uv
-      # provision the interpreter itself.
+      # uv installs via its standalone script (not a GitHub Action, so exempt
+      # from the enterprise SHA-pinning policy) and provisions Python itself,
+      # avoiding an extra pinned action such as actions/setup-python.
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
