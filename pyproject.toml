@@ -16,7 +16,7 @@ dependencies = [
     "scikit-learn>=1.5.0",
     "matplotlib>=3.8.4",
     "einops>=0.7.0,<1",
-    "torch>=2.12.0",
+    "torch>=2.13.0",
     "pandas>=2.2.2",
     "pyarrow>=23.0.1",
     "pykeops==2.2.3",
