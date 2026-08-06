@@ -10,7 +10,7 @@ on:
 jobs:
   python-checks:
     runs-on:
-      group: managed
+      group: managed-linux
     strategy:
       fail-fast: false
       matrix:
