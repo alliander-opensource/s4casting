@@ -51,7 +51,7 @@ dependencies = [
 dev = [
     "pytest>=8.2.2",
     "pytest-cov>=7.1.0",
-    "ruff==0.14.14",
+    "ruff==0.16.7",
     "deptry>=0.20.0",
     "line-profiler>=5.0.2",
     "ty==0.0.1a23",
