@@ -44,7 +44,7 @@ dependencies = [
     "boto3>=1.40.49",
     "folium>=0.20.0",
     "chronos-forecasting>=2.0.0rc4",
-    "peft>=0.13.0,<0.18",
+    "peft>=0.13.0,<0.22",
 ]
 
 [dependency-groups]
