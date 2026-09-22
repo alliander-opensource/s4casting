@@ -69,9 +69,14 @@ class Context:
         self.input_validation_sample_rate: int = 15
         self.output_validation_sample_rate: int = 15
         dps = self.batcher.datasets_per_source if self.batcher else {}
-        self.measurements_hash = (
-            hash_all_memmaps(dps["measurements"]) if "measurements" in dps and configuration.io.hash_datasets else ""
-        )
-        self.weather_hash = (
-            hash_all_memmaps(dps["weather"]) if "weather" in dps and configuration.io.hash_datasets else ""
-        )
+        self.tracking_parameters = configuration.model_dump(mode="json", exclude={"authentication"})
+        self.tracking_parameters.update({
+            "dataset_hash_measurements": (
+                hash_all_memmaps(dps["measurements"])
+                if "measurements" in dps and configuration.io.hash_datasets
+                else ""
+            ),
+            "dataset_hash_weather": (
+                hash_all_memmaps(dps["weather"]) if "weather" in dps and configuration.io.hash_datasets else ""
+            ),
+        })

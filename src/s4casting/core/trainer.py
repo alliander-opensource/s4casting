@@ -86,7 +86,9 @@ class Trainer:
         while self._iteration < self._config.maximum_steps:
             self.epoch = self._iteration // self._config.n_samples_per_epoch
             if context.machine.ddp:
-                context.batcher.train_loader.batch_sampler.set_epoch(self.epoch)  # type: ignore[possibly-missing-attribute]
+                context.batcher.train_loader.batch_sampler.set_epoch(  # type: ignore[possibly-missing-attribute]
+                    self.epoch
+                )
             for X_all, sample_config in context.batcher.train_loader:  # type: ignore[attr-defined]
                 if self._iteration > 0 and self._main_process:
                     # Only needed after first set of iterations for the main process

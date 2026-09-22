@@ -7,6 +7,7 @@ from .benchmarker import provide_benchmark
 from .checkpointer import provide_checkpointer
 from .evaluator import provide_evaluation
 from .evaluator_head import provide_evaluator_head
+from .logger import provide_loggers
 from .machine import provide_machine
 from .model_container import provide_model_container
 from .optimizer import provide_optimizer
@@ -19,6 +20,7 @@ __all__ = [
     "provide_checkpointer",
     "provide_evaluation",
     "provide_evaluator_head",
+    "provide_loggers",
     "provide_machine",
     "provide_model_container",
     "provide_optimizer",

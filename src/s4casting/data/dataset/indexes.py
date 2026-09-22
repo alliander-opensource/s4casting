@@ -52,7 +52,7 @@ def get_timestamps(
             tz="UTC",
         )
         times = times.union(temp_index)
-    return times  # ty: ignore[invalid-return-type]
+    return times
 
 
 def fill_gaps(

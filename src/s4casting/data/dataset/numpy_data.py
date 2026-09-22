@@ -44,6 +44,7 @@ class NumpyData:
     locations: dict
     cumsum: NDArray = field(init=False)
     pointcache: NDArray = field(init=False)
+    column_indices: NDArray[np.intp] | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Compute derived lookup structures after dataclass initialisation."""
@@ -58,14 +59,20 @@ class NumpyData:
         """
         if end <= start:
             return np.empty(0, dtype=float)
-        out = np.full(((end - start - 1) // self.sample_interval + 1, self.data.shape[1]), np.nan, dtype=float)
+        n_features = self.data.shape[1] if self.column_indices is None else len(self.column_indices)
+        out = np.full(((end - start - 1) // self.sample_interval + 1, n_features), np.nan, dtype=float)
         for s_i, e_i in intersect_single(self.intervals, start, end):
             count = (e_i - s_i - 1) // self.sample_interval + 1
             dst0 = (s_i - start) // self.sample_interval
             src0 = point_to_index_fast(self.pointcache, s_i, self.sample_interval)
             x = self.data[src0 : src0 + count]
+
+            if self.column_indices is not None:
+                x = x[:, self.column_indices]
+
             if len(x):
                 out[dst0 : dst0 + len(x)] = x
+
         return out
 
 

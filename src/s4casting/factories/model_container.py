@@ -9,11 +9,11 @@ from copy import deepcopy
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from s4casting.core.config import DTYPE_MAP, IOConfiguration, ModelConfiguration
+from s4casting.core.config import IOConfiguration, ModelConfiguration
 from s4casting.core.loss import CompositeLoss, SoftClipLoss, SubsetNLLLoss, SubsetPinballLoss
 from s4casting.core.machine import Machine
 from s4casting.core.model_container import ModelContainer
-from s4casting.model._encoders import PatchDecoder, PatchEncoder, SeperateLocTime, SSEncoder
+from s4casting.model._encoders import PatchDecoder, PatchEncoder, SeperateLocTime, SeriesPatchEncoder, SSEncoder
 from s4casting.model._heads import GMMHead, QuantileHead
 from s4casting.model.chronos import ChronosWrapper
 from s4casting.model.ss import SSModel
@@ -48,29 +48,20 @@ def _build_loss_fn(config: ModelConfiguration) -> nn.Module:
         Configured loss function, optionally wrapped with soft clipping.
     """
     if config.loss.loss == "nll":
-        loss_fn = SubsetNLLLoss(
+        return SubsetNLLLoss(
             config.loss.sigma_regularisation_factor,
             config.loss.mask_mode,
         )
-    elif config.loss.loss == "mse":
-        loss_fn = nn.MSELoss()
-    elif config.loss.loss == "pinball":
-        loss_fn = SubsetPinballLoss(
+    if config.loss.loss == "mse":
+        return nn.MSELoss()
+
+    if config.loss.loss == "pinball":
+        return SubsetPinballLoss(
             config.output_head.quantile_values,
             config.loss.mask_mode,
         )
-    else:
-        msg = f"Loss function {config.loss.loss} not implemented"
-        raise ValueError(msg)
 
-    if config.loss.alpha_clip != 0:
-        loss_clip = SoftClipLoss(alpha=config.loss.alpha_clip)
-        loss_core = deepcopy(loss_fn)
-
-        def loss_fn(*args, **kwargs):
-            return loss_clip(loss_core(*args, **kwargs))
-
-    return loss_fn
+    raise ValueError(f"Loss function {config.loss.loss} not implemented")
 
 
 def provide_model_container(config: ModelConfiguration, io_config: IOConfiguration, machine: Machine) -> ModelContainer:
@@ -84,11 +75,21 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
     Returns:
         ModelContainer: An instance of ModelContainer.
     """
+    if config.model == "chronos":
+        model = _build_chronos_model(config)
+        model.to(machine.torch_device)
+        config.n_trainable_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        return ModelContainer(
+            model=model, ddp=(DDP(model, device_ids=[machine.ddp.local_rank]) if machine.ddp else None)
+        )
+
     n_features = sum(
         len(x.subset_features) if x.subset_features else x.n_features
         for x in {k.split("_")[0]: v for k, v in io_config.features.items()}.values()
     )
-    has_time = any(v.loader == "time" for v in io_config.features.values())
+
+    has_time = any(io_config.features[name].loader == "time" for name in io_config.feature_order)
+
     n_data_features = n_features - 3 * has_time
     if config.patch_encoder.patch_size != 1 and n_data_features > config.n_out_features:
         warnings.warn(
@@ -98,13 +99,14 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
             stacklevel=2,
         )
     n_weather_features = max(0, n_data_features - config.n_out_features) if config.patch_encoder.patch_size == 1 else 0
-    latent_dim = config.transformer.latent_dim if config.model == "transformer" else config.latent_dim
+
+    # TODO: clean this messiness up when refactoring model container - preferably to have a model specific builder
+    latent_dim = config.ssm.latent_dim if config.model == "ssm" else config.transformer.latent_dim
 
     if config.patch_encoder.arch == "linear":
         if config.model == "transformer":
-            patch_encoder = PatchEncoder(
+            patch_encoder = SeriesPatchEncoder(
                 latent_dim,
-                n_data_features * 2,  # to accept target + mask
                 config.patch_encoder.patch_size,
             )
         else:
@@ -122,7 +124,7 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
             patch_size=config.patch_encoder.patch_size,
         )
 
-    if has_time:
+    if has_time and config.model != "transformer":
         patch_encoder = SeperateLocTime(patch_encoder)
 
     patch_decoder = PatchDecoder(
@@ -148,8 +150,6 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
 
     loss_fn = _build_loss_fn(config)
     composite_loss = CompositeLoss(config.loss.components)
-
-    assert config.loss.loss in ["nll", "mse", "pinball"], f"Loss function {config.loss.loss} not implemented"
 
     if config.loss.alpha_clip != 0:
         loss_clip = SoftClipLoss(alpha=config.loss.alpha_clip)
@@ -179,35 +179,23 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
         )
 
     elif config.model == "transformer":
-        input_length = (
-            (config.context_window[0] - config.predict_width) * 24 * 60
-        ) // config.base_sample_interval_minutes
-        predict_length = (config.predict_width * 24 * 60) // config.base_sample_interval_minutes
         model = TransformerModel(
-            seq_len=input_length + predict_length,
             latent_dim=latent_dim,
             n_heads=config.transformer.n_heads,
             n_layers=config.transformer.n_layers,
             patch_size=config.patch_encoder.patch_size,
             dropout=config.transformer.dropout,
-            use_cross_attention=config.transformer.use_cross_attention,
-            context_n_layers=config.transformer.context_n_layers,
-            dtype=DTYPE_MAP[config.internal_dtype],
-            is_causal=config.transformer.is_causal,
             attn_bias=config.transformer.attn_bias,
-            mlp_bias=config.transformer.mlp_bias,
             mlp_layers=config.transformer.mlp_layers,
-            mlp_activation=config.transformer.mlp_activation,
             loss_fn=loss_fn,
             output_head=output_head,
             patch_encoder=patch_encoder,
             patch_decoder=patch_decoder,
             norm_clamp=config.norm_clamp,
             norm_eps=config.norm_eps,
-            base_sample_interval_minutes=config.base_sample_interval_minutes,
+            has_time=has_time,
+            causal=config.transformer.causal,
         )
-    elif config.model == "chronos":
-        model = _build_chronos_model(config)
 
     model.to(
         machine.torch_device

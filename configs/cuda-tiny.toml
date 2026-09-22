@@ -24,7 +24,6 @@ output_sample_intervals_minutes = [15]
 alignment = 1440
 model = "ssm"
 norm_clamp = 10
-latent_dim = 256
 
 [model.loss]
 loss = "pinball"
@@ -32,6 +31,7 @@ loss = "pinball"
 [model.ssm]
 kernel = "s6"
 n_layers = 2
+latent_dim = 256
 
 [model.output_head]
 arch = "quantile"
@@ -62,9 +62,7 @@ gradient_clipping = 1
 [io]
 feature_order = ["measurements"]
 output = "out/"
-gap_skip_hours = 1
 
 [io.features.measurements]
 location = "data/LianderPower/"
 loader = "croissant"
-

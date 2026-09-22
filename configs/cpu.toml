@@ -4,6 +4,10 @@
 [machine]
 device_kind = "cpu"
 
+[logging.wandb]
+mode = "offline"
+project = "dev"
+
 [training]
 task="prediction"
 batch_size = 32
@@ -29,10 +33,17 @@ sigma_regularisation_factor = 1
 
 [model.ssm]
 kernel = "s4"
-number_of_embeddings = 1024
-number_of_layers = 9
+latent_dim = 1024
+n_layers = 9
+
+[model.output_head]
+n_gaussians = 4
+
+[model.patch_encoder]
 patch_size = 8
-number_of_gaussians = 4
+
+[model.patch_decoder]
+patch_size = 8
 
 [benchmarking]
 eval_quantiles = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
@@ -51,7 +62,6 @@ gradient_clipping = 1
 [io]
 feature_order = ["measurements_cdb", "weather"]
 output = "out/"
-gap_skip_hours  = 1
 
 [io.features.measurements_cdb]
 location = "data/LianderPower/"

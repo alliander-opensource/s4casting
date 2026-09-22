@@ -22,6 +22,7 @@ from s4casting.data.dataset.indexes import (
     just_location,
     just_time,
     location_id,
+    substract,
     to_intervals,
     union,
 )
@@ -75,8 +76,14 @@ def load_memmap(file_path: str, to_memory: bool, feature_names: list[str] = []):
 
     locations = {location_id(y["name"]): y for x, y in locations.items()}
 
-    if feature_names:
-        data = data[:, [meta["feature_names"].index(x) for x in feature_names]]
+    column_indices = (
+        np.asarray(
+            [meta["feature_names"].index(name) for name in feature_names],
+            dtype=np.intp,
+        )
+        if feature_names
+        else None
+    )
 
     return NumpyData(
         data,
@@ -84,6 +91,7 @@ def load_memmap(file_path: str, to_memory: bool, feature_names: list[str] = []):
         to_intervals(spans, int(meta["sample_interval_minutes"]) * 60),
         spans,
         locations,
+        column_indices=column_indices,
     )
 
 
@@ -118,7 +126,7 @@ def load_external_data(file_path: str):
             start_timestamp = df.index.min().timestamp()
             data = np.float32(df["measurements"].to_numpy().reshape([-1, 1]))
 
-            all_sideloaded_spans.append([sum(len(x) for x in all_sideloaded_data), i, start_timestamp, len(data)])  # ty: ignore[invalid-argument-type]
+            all_sideloaded_spans.append([sum(len(x) for x in all_sideloaded_data), i, start_timestamp, len(data)])
             all_sideloaded_data.append(data)
     if not all_sideloaded_data:
         return None
@@ -265,6 +273,33 @@ class TimeData:
         return np.concatenate((times, coords), axis=-1)
 
 
+def _apply_sideload_priority(config: IOConfiguration, dataset_per_source: defaultdict) -> None:
+    """Make sideloaded sources authoritative for the locations/times they cover.
+
+    Other sources in the same feature group may carry the same locations over the
+    same period (e.g. an extended CDB export) with a different sign convention;
+    TimeseriesDataset nansums sources within a group, so any overlap would corrupt
+    the merged series. Subtract each sideload's coverage from its sibling sources
+    so exactly one source provides each point.
+
+    Args:
+        config (IOConfiguration): IO configuration.
+        dataset_per_source (typing.DefaultDict): Per-source datasets, mutated in place.
+    """
+    for name, cfg in config.features.items():
+        if cfg.loader != "sideload":
+            continue
+        group = name.split("_")[0]
+        sideload_data = dataset_per_source[group][name]
+        if sideload_data is None:
+            continue
+        for other_name, other in dataset_per_source[group].items():
+            if other_name == name or not isinstance(other, NumpyData):
+                continue
+            other.intervals = substract(other.intervals, sideload_data.intervals)
+            other.cumsum = np.cumsum((other.intervals[:, 1] - other.intervals[:, 0] - 1) // other.sample_interval + 1)
+
+
 def initialize_per_source_datasets(
     config: IOConfiguration, model_config: ModelConfiguration, dataset_per_source: defaultdict
 ) -> tuple[defaultdict, NDArray]:
@@ -304,6 +339,8 @@ def initialize_per_source_datasets(
         dataset_per_source[name.split("_")[0]][name] = data
         all_locations.update(data.locations)
 
+    _apply_sideload_priority(config, dataset_per_source)
+
     # Wrap all nearest_neighbor sources with spatial matching now that all
     # measurement locations are known.
     for name, cfg in config.features.items():
@@ -318,6 +355,7 @@ def initialize_per_source_datasets(
             wdata.spans,
             wdata.locations,
             reference_locations=all_locations,
+            column_indices=wdata.column_indices,
         )
 
     nn_groups = {name.split("_")[0] for name, cfg in config.features.items() if cfg.nearest_neighbor}
@@ -373,7 +411,7 @@ def hash_all_memmaps(combined_dataset: dict[str, NumpyData]) -> str:
         str: A single SHA-256 hex digest representing all memmaps in the dataset.
     """
     h = hashlib.sha256()
-    hashes = [hash_memmap(ds.data) for ds in combined_dataset.values()]  # ty: ignore[invalid-argument-type]
+    hashes = [hash_memmap(ds.data) for ds in combined_dataset.values()]
     for hmem in sorted(hashes):
         h.update(hmem.encode())
     return h.hexdigest()

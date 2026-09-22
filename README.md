@@ -15,11 +15,23 @@ The repo contains:
 - Training loop (distributed / torchrun-ready)
 - Evaluation and benchmarking pipeline
 - Config-driven experiments (CPU / CUDA configs)
+- Experiment tracking with MLflow and Weights & Biases logging
 - Inference scripts for running trained models on new data
+- ONNX export for running trained models without PyTorch or this repository
 
 ## Installation
 You can install the repo following the installation guide:
 - [Installation](docs/INSTALLATION.md)
+
+To test MLflow tracking locally, start a SQL-backed workspace-enabled server:
+
+```bash
+uv run mlflow server --enable-workspaces
+```
+
+Note that MLflow Image Grid does not currently display images logged from
+non-default workspaces; see [Usage](docs/USAGE.md) for details on configuring
+MLflow tracking.
 
 ## Documentation
 
@@ -29,6 +41,7 @@ You can find detailed documentation for each component in the following links:
 - [Data Sources](docs/DATA_SOURCES.md)
 - [Model settings](docs/CONFIGURATION.md)
 - [Evaluation](docs/EVALUATION.md)
+- [ONNX export](docs/ONNX_EXPORT.md)
 - [Repository](docs/REPOSITORY.md)
 - [Contributing](docs/CONTRIBUTING.md)
 

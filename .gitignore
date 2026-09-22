@@ -165,3 +165,7 @@ measurements.meta.pkl
 cuda-keyring_*
 /benchmarking
 /configs/local
+
+# mlflow server files
+mlflow.db
+mlartifacts/

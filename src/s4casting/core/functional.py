@@ -132,15 +132,15 @@ def resample(data: torch.Tensor, patch_size, maxpool=True) -> torch.Tensor:
 
 
 def select_rate(
-    input_rate: torch.Tensor,
+    input_sample_intervals_minutes: list[int],
     output_sample_intervals_minutes: list[int],
-    transcoding: bool = False,
+    transcoding: bool = False,  # noqa: ARG001  # reserved for upcoming transcoding support
 ) -> torch.Tensor:
     """Randomly choose an output sample interval that is greater than or equal to the given input sample interval.
 
     Args:
-        input_rate (int): input_sample rate for batch.
-        output_sample_intervals_minutes(list[int]): Possible output sample rate.
+        input_sample_intervals_minutes (list[int]): Input sample rates for the batch; the first entry is used.
+        output_sample_intervals_minutes (list[int]): Possible output sample rates.
         transcoding (bool): Determines if input and output rates can be different.
 
     Returns:
@@ -149,14 +149,16 @@ def select_rate(
     Raises:
         ValueError: If no valid output sample interval exists.
     """
-    if not transcoding:
-        return input_rate
-
-    raise ValueError("Transcoding currently unsupported.")
+    # HACK FOR NOW:
+    # What we need to is maintain the same "ratio" between samples
+    # this means when we do the restructiing trick in the loss
+    # all samples are of the same size
+    # for now we can just choose a single output rate.
+    input_rate = input_sample_intervals_minutes[0]
 
     valid_rates = [rate for rate in output_sample_intervals_minutes if rate >= input_rate]
 
     if not valid_rates:
         raise ValueError(f"No output sample interval >= input_rate ({input_rate})")
 
-    return random.choice(valid_rates)
+    return torch.ones_like(torch.tensor(input_sample_intervals_minutes)) * random.choice(valid_rates)

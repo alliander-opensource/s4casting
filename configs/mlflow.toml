@@ -1,12 +1,25 @@
 # SPDX-FileCopyrightText: Contributors to the s4casting project
 #
 # SPDX-License-Identifier: MPL-2.0
+#
+# Example configuration demonstrating MLflow experiment logging.
+# Based on cpu.toml so it runs on the public LianderPower dataset.
 
 [machine]
-device_kind = "mps"
+device_kind = "cpu"
+
+[run]
+seed = 42069
+
+[logging.mlflow]
+# Points at the default local tracking server (`mlflow server`); any endpoint
+# accepted by mlflow.set_tracking_uri works here, e.g. a remote HTTP(S)
+# tracking server or a managed tracking backend.
+uri = "http://127.0.0.1:5000/"
+experiment = "dev"
 
 [training]
-task="prediction"
+task = "prediction"
 batch_size = 32
 gradient_accumulation_steps = 1
 evaluation_interval = 1000
@@ -22,24 +35,28 @@ input_sample_intervals_minutes = [15]
 output_sample_intervals_minutes = [15]
 alignment = 1440
 model = "ssm"
+norm_clamp = 10
 
 [model.loss]
 loss = "nll"
-alpha_clip = 0.1
-mask_mode = "masked"
+sigma_regularisation_factor = 1
 
 [model.ssm]
 kernel = "s4"
-latent_dim = 1024
 n_layers = 9
+latent_dim = 1024
 
 [model.output_head]
+arch = "gmm"
 n_gaussians = 4
 
 [model.patch_encoder]
+arch = "linear"
+n_layers = 4
 patch_size = 8
 
 [model.patch_decoder]
+arch = "linear"
 patch_size = 8
 
 [benchmarking]

@@ -23,7 +23,6 @@ from s4casting.core.authenticate import configure_authentication
 from s4casting.core.cli import get_configuration
 from s4casting.core.config import Configuration
 from s4casting.core.context import Context
-from s4casting.core.logger import CSVLogger, StdLogger, WandbLogger
 
 
 def train(config: Configuration):
@@ -68,9 +67,14 @@ def train(config: Configuration):
     benchmarker = fc.provide_benchmark(config.benchmarking, trainer.hooks, evaluator_head)
 
     if machine.main_process:
-        StdLogger(trainer.hooks, config.training)
-        WandbLogger(trainer.hooks, config.run, config.authentication, config.io.output)
-        CSVLogger(trainer.hooks, config.run, config.io.output)
+        fc.provide_loggers(
+            config.logging,
+            config.run,
+            config.training,
+            config.authentication,
+            config.io.output,
+            trainer.hooks,
+        )
 
     ctx = Context(
         configuration=config,

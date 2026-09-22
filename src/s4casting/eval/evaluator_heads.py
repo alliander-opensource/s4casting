@@ -182,7 +182,7 @@ class EvaluatorHead:
             Xm,
             Y,
             Ym,
-            times,  # ty: ignore[invalid-argument-type]
+            times,
             input_interval,
             output_interval,
             report_type,

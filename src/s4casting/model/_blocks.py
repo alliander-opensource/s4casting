@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import nn
 
-from s4casting.model._s4_kernel import SSMKernelDPLR
+from s4casting.model._s4_kernel import Activation, SSMKernelDPLR
 
 
 class FFTConv(nn.Module):
@@ -264,3 +264,131 @@ class SequenceResidualBlock(nn.Module):
         y, _new_state = self.layer(y, rate=rate, **kwargs)
         y = self.mixer(y.swapaxes(1, 2)).swapaxes(1, 2)
         return x + y
+
+
+class MLP(nn.Module):
+    """Multi-layer perceptron with configurable depth and activation."""
+
+    def __init__(
+        self,
+        *,
+        embed_dim: int,
+        hidden_dim: int | None = None,
+        n_layers: int = 2,
+        bias: bool = True,
+        dropout: float = 0.0,
+        activation: str = "gelu",
+    ):
+        """Initialize MLP layers."""
+        super().__init__()
+        hidden_dim = embed_dim * 4  # transformer convention
+        self.first_layer = nn.Linear(embed_dim, hidden_dim, bias=bias)
+        self.mid_layers = nn.Sequential(*[
+            nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim, bias=bias),
+                Activation(activation),
+            )
+            for _ in range(n_layers - 2)
+        ])
+        self.final_layer = nn.Linear(hidden_dim, embed_dim, bias=bias)
+        self.dropout_layer = nn.Dropout(dropout)
+        self.activation = Activation(activation)
+
+    def forward(self, x: torch.Tensor):
+        """Apply MLP layers with activation and dropout.
+
+        Returns:
+            Transformed tensor.
+        """
+        x = self.activation(self.first_layer(x))
+        x = self.mid_layers(x)
+        x = self.final_layer(x)
+        return self.dropout_layer(x)
+
+
+class SelfAttention(nn.Module):
+    """Multihead self-attention with optional RoPE and key masking."""
+
+    def __init__(
+        self,
+        latent_dim: int,
+        n_heads: int,
+        *,
+        bias: bool = True,
+        dropout: float = 0.0,
+        is_causal: bool = False,
+        rope: nn.Module | None = None,
+    ):
+        super().__init__()
+        assert latent_dim % n_heads == 0, "latent_dim must be divisible by n_heads"
+
+        self.n_heads = n_heads
+        self.is_causal = is_causal
+        self.dropout = dropout
+        self.rope = rope
+
+        self.qkv = nn.Linear(latent_dim, 3 * latent_dim, bias=bias)
+        self.out = nn.Linear(latent_dim, latent_dim, bias=bias)
+
+    def forward(self, x: torch.Tensor, key_present: torch.Tensor | None = None):
+        """Compute scaled dot-product attention with rotary embeddings.
+
+        Returns:
+            Attention output tensor of shape (B, P, E).
+        """
+        b, p, _ = x.shape
+
+        query, key, value = self.qkv(x).view(b, p, 3, self.n_heads, -1).unbind(2)
+
+        if self.rope is not None:
+            query, key = self.rope(query), self.rope(key)
+
+        query, key, value = (tensor.transpose(1, 2) for tensor in (query, key, value))
+
+        attention_mask = key_present[:, None, None, :] if key_present is not None else None
+
+        x = F.scaled_dot_product_attention(
+            query=query,
+            key=key,
+            value=value,
+            attn_mask=attention_mask,
+            is_causal=self.is_causal,
+            dropout_p=self.dropout if self.training else 0.0,
+        )
+        x = x.transpose(1, 2).flatten(2)
+
+        return F.dropout(self.out(x), self.dropout, self.training)
+
+
+class RotaryPositionalEmbedding(nn.Module):
+    """Rotary positional embedding (RoPE).
+
+    Refactored from existing RoPE implementation with assistance from ChatGPT;
+    algorithm based on Su et al. (2021).
+
+    """
+
+    def __init__(self, dim: int, max_seq_len: int = 4096, base: int = 10000):
+        """Initialize RoPE and build sin/cos cache."""
+        super().__init__()
+        assert dim % 2 == 0, "RoPE head dimension must be even"
+
+        positions = torch.arange(max_seq_len, dtype=torch.float32)
+        frequencies = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim))
+        angles = torch.outer(positions, frequencies)
+
+        self.register_buffer(
+            "cache",
+            torch.stack((angles.cos(), angles.sin())),
+            persistent=False,
+        )
+
+    def forward(self, x: torch.Tensor):
+        """Apply rotary embeddings.
+
+        Returns:
+            Rotated embedding tensor.
+        """
+        cos, sin = self.cache[:, : x.shape[1], None].to(x)
+        x1, x2 = x.chunk(2, dim=-1)
+        return torch.cat((x1 * cos - x2 * sin, x2 * cos + x1 * sin), dim=-1)

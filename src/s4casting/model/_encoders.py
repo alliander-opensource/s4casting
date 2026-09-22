@@ -19,6 +19,41 @@ EPOCH_2012 = 1_325_376_000
 NL_CENTER = (52.15, 5.25)
 
 
+class SeriesPatchEncoder(nn.Module):
+    """Encode target and covariates into patches."""
+
+    def __init__(
+        self,
+        latent_dim: NonNegativeInt,
+        patch_size: NonNegativeInt,
+    ):
+        super().__init__()
+        self.patch_size = patch_size
+        self.proj = nn.Linear(2 * patch_size, latent_dim)
+
+    def forward(self, x: torch.Tensor, xm: torch.Tensor) -> torch.Tensor:
+        """Get patches and project into embedding space.
+
+        Args:
+            x: Tensors of shape [B, T, F]
+            xm: Tensors of shape [B, T, F]
+
+        Returns:
+            tokens [B, F, P, E]
+        """
+        x_patches = rearrange(x, "b (n p) f -> b f n p", p=self.patch_size)
+
+        xm_patches = rearrange(
+            xm,
+            "b (n p) f -> b f n p",
+            p=self.patch_size,
+        ).to(x.dtype)
+
+        patches = torch.cat([x_patches, xm_patches], dim=-1)
+
+        return self.proj(patches)
+
+
 class SSEncoder(nn.Module):
     def __init__(
         self,
@@ -217,7 +252,7 @@ class TemporalEmbedding(nn.Module):
         if t is None:
             return torch.zeros(self.latent_dim, device=t.device)
 
-        angles = [2 * pi * (t % p) / p for p in [DAY, WEEK * 3, YEAR]]
+        angles = [2 * pi * (t % p) / p for p in [DAY, WEEK, YEAR]]
         feats = [f(x) for x in angles for f in (torch.sin, torch.cos)]
         feats.append(torch.tanh(((t - EPOCH_2012) / YEAR - 6.5) / 6.5))
         x = self.norm(torch.stack(feats, dim=-1))
