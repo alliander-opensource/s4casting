@@ -53,6 +53,14 @@ On first boot:
 cd s4casting
 bash setup.sh
 ```
+
+To install python packages through the Alliander Artifactory index instead of
+public PyPI, copy `.env.example` to `.env`, fill in your `ARTIFACTORY_USERNAME`
+and `ARTIFACTORY_TOKEN`, and run:
+```bash
+bash setup.sh --artifactory
+```
+
 This will:
 - Install python package manager (uv) 
 - Install CUDA 
