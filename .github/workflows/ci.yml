@@ -28,7 +28,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: "0.11.32"  # keep in step with the uv used locally
+          version: "0.12.18"  # keep in step with the uv used locally
 
       # The committed lockfile must resolve from public PyPI so builds are
       # publicly reproducible; lockfiles resolved against private mirrors
