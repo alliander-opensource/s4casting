@@ -23,7 +23,17 @@ jobs:
       # from the enterprise SHA-pinning policy) and provisions Python itself,
       # avoiding an extra pinned action such as actions/setup-python.
       - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/install.sh | sh
+
+      # setup.sh --artifactory re-resolves uv.lock against the internal index;
+      # that lockfile must never be committed (public CI has no credentials).
+      - name: Check lockfile uses public PyPI
+        run: |
+          if grep -q 'alliander.jfrog.io' uv.lock; then
+            echo "::error file=uv.lock::uv.lock is resolved against Artifactory." \
+                 "Restore the public lockfile: git checkout origin/main -- uv.lock"
+            exit 1
+          fi
 
       - name: Install Dependencies
         run: |

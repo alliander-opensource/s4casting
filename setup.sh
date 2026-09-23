@@ -47,8 +47,8 @@ if ! command -v uv >/dev/null 2>&1; then
     # Prefer pip (routes through Artifactory when PIP_CONFIG_FILE is set); on
     # PEP 668 "externally-managed" Pythons (e.g. Homebrew) fall back to the
     # standalone installer, which needs no Python at all.
-    pip install uv || {
-        curl -LsSf https://astral.sh/uv/install.sh | sh
+    pip install --only-binary ':all:' uv || {
+        curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/install.sh | sh
         export PATH="${HOME}/.local/bin:${PATH}"
     }
 fi
@@ -64,6 +64,13 @@ fi
 
 uv venv
 uv sync --python 3.12
+
+if [ "${PACKAGE_SOURCE}" = "artifactory" ]; then
+    # uv sync re-resolves uv.lock against the Artifactory index. Restore the
+    # committed (public PyPI) lockfile so the rewrite can never be committed;
+    # the .venv built above is unaffected.
+    git -C "${REPO_DIR}" restore uv.lock 2>/dev/null || true
+fi
 
 if [ "${OS}" = "Linux" ] && command -v apt-get >/dev/null 2>&1; then
     export CUDA_HOME=/usr/local/cuda
