@@ -18,7 +18,7 @@ def plot_quantiles(
     Xm: torch.Tensor,
     Y: torch.Tensor,
     Ym: torch.Tensor,
-    times: NDArray,
+    times: NDArray | None,
     input_sample_interval_minutes: int,
     output_sample_interval_minutes: int,
     report_type: str,
@@ -32,7 +32,7 @@ def plot_quantiles(
     Args:
         quantiles (torch.tensor): Quantile predictions.
         quantile_values (list): Which quantile do the quantiles belong to.
-        times (NDArray): Time stamps associated with the predictions.
+        times (NDArray | None): Time stamps associated with the predictions; required for benchmark reports.
         X (np.ndarray): Input data tensor of shape (B, T, F).
         Xm (np.ndarray): Input mask tensor of shape (B, T, F).
         Y (np.ndarray): Output data tensor of shape (B, T, F).
@@ -69,6 +69,8 @@ def plot_quantiles(
 
         # Benchmarking
         if report_type == "benchmark":
+            if times is None:
+                raise ValueError("times must be provided for benchmark reports")
             return plot_short_term_benchmark_quantiles(
                 Y, Ym, times, quantiles, quantile_values, feature_names=feature_names
             )

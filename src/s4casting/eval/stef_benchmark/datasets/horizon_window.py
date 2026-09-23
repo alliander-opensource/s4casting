@@ -94,7 +94,7 @@ class HorizonWindowDataset(Dataset):
             if self.target is None:
                 raise ValueError("StefBeam time encoding requires a BenchmarkTarget with latitude/longitude.")
 
-            unix_seconds = (w.index.astype("int64") // 1_000_000_000).to_numpy(dtype=np.float32)
+            unix_seconds = w.index.as_unit("s").astype("int64").to_numpy(dtype=np.float32)
             time_features = np.stack(
                 [
                     unix_seconds,
@@ -120,5 +120,5 @@ class HorizonWindowDataset(Dataset):
         return {
             "X": X,
             "xm": xm,
-            "ts": w.index[-self.n_predict :].astype("int64").tolist(),  # timestamps
+            "ts": w.index[-self.n_predict :].as_unit("ns").astype("int64").tolist(),  # ns timestamps, decoded as such
         }

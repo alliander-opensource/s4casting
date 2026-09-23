@@ -60,7 +60,8 @@ def load_memmap(file_path: str, to_memory: bool, feature_names: list[str] = []):
     meta = FileAccess(file_path).load_json()
     locations = _get_locations(meta)
 
-    spans = FileAccess(str(Path(file_path).parent / meta["spans"])).load_parquet().to_numpy()
+    # copy=True: pandas may hand back a read-only view, and the location ids are remapped in place below
+    spans = FileAccess(str(Path(file_path).parent / meta["spans"])).load_parquet().to_numpy(copy=True)
     data = np.memmap(
         FileAccess(str(Path(file_path).parent / meta["dataset"])).as_local_path(), dtype="float32", mode="r"
     ).reshape((-1, int(meta["dimension"])))
@@ -124,7 +125,7 @@ def load_external_data(file_path: str):
             ).fillna(value=0)
 
             start_timestamp = df.index.min().timestamp()
-            data = np.float32(df["measurements"].to_numpy().reshape([-1, 1]))
+            data = df["measurements"].to_numpy().reshape([-1, 1]).astype(np.float32)
 
             all_sideloaded_spans.append([sum(len(x) for x in all_sideloaded_data), i, start_timestamp, len(data)])
             all_sideloaded_data.append(data)
@@ -370,7 +371,7 @@ def initialize_per_source_datasets(
     return dataset_per_source, intervals
 
 
-def hash_memmap(mm: np.memmap, chunk: int = 1_000_000):
+def hash_memmap(mm: np.ndarray, chunk: int = 1_000_000):
     """Compute a deterministic hash of the numerical contents of a single memmap.
 
     This function reads the memmap in fixed-size chunks to avoid loading the entire
@@ -378,7 +379,7 @@ def hash_memmap(mm: np.memmap, chunk: int = 1_000_000):
     representations of all numerical values in the memmap.
 
     Args:
-        mm (np.memmap): The memmap-backed NumPy array to hash.
+        mm (np.ndarray): The (typically memmap-backed) NumPy array to hash.
         chunk (int): The number of elements to read at a time from the memmap.
 
     Returns:

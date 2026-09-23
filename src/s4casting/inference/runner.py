@@ -151,7 +151,7 @@ class DataFrameInferenceRunner:
         """
         df = df.tail(self.context_steps_cfg)
         if isinstance(df.index, pd.DatetimeIndex):
-            freq = f"{self.input_interval_min}T"
+            freq = f"{self.input_interval_min}min"
             start = df.index[-1] + pd.Timedelta(minutes=self.input_interval_min)
             new_index = pd.date_range(start=start, periods=self.predict_steps_cfg, freq=freq)
         else:

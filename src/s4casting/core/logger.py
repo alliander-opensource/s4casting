@@ -16,7 +16,7 @@ import mlflow
 import numpy as np
 import pandas as pd
 import wandb
-from mlflow import MlflowClient
+from mlflow import MlflowClient  # type: ignore[possibly-missing-import]  # guarded export, ty cannot see it
 from mlflow.exceptions import MlflowException
 from openstef_beam.benchmarking import read_evaluation_reports
 from plotly.graph_objects import Figure
@@ -278,10 +278,9 @@ class WandbLogger(LoggerInterface):
         self.config = config
         self.mode = config.mode
         if config.mode is WandbMode.Online:
-            if auth.wandb_api_key is not None:
-                wandb.login(key=auth.wandb_api_key.get_secret_value())
-            else:
+            if auth is None or auth.wandb_api_key is None:
                 raise ValueError("WandB online mode requires an API key, but none was provided")
+            wandb.login(key=auth.wandb_api_key.get_secret_value())
         super().__init__(hookable)
         output_dir: Path = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -594,7 +593,7 @@ class MLflowLogger(LoggerInterface):
                     if exc.error_code != "RESOURCE_ALREADY_EXISTS":
                         raise
 
-            mlflow.set_workspace(config.workspace)
+            mlflow.set_workspace(config.workspace)  # type: ignore[possibly-missing-attribute]
             mlflow.set_experiment(config.experiment)
         finally:
             for key, value in previous_env.items():
@@ -698,7 +697,7 @@ class MLflowLogger(LoggerInterface):
             metrics: Metrics to log.
             iteration: Training iteration.
         """
-        mlflow.log_metrics(
+        mlflow.log_metrics(  # type: ignore[possibly-missing-attribute]
             self._prepare_metrics(metrics),
             step=0 if iteration is None else iteration,
             synchronous=True,
@@ -715,14 +714,14 @@ class MLflowLogger(LoggerInterface):
         step = 0 if iteration is None else iteration
         filename = self._sanitize_artifact_component(name)
         artifact_root = f"steps/step-{step:08d}/figures/{filename}"
-        mlflow.log_figure(fig, f"{artifact_root}.html")
+        mlflow.log_figure(fig, f"{artifact_root}.html")  # type: ignore[possibly-missing-attribute]
         # MLflow does not natively save plotly figures, or byte-level images (fig.to_image('png')),
         # so we need to save as PNG and then log.
         with TemporaryDirectory() as temp_dir:
             image_path = Path(temp_dir) / f"{filename}.png"
             fig.write_image(str(image_path))
-            mlflow.log_image(
-                mlflow.Image(str(image_path)),
+            mlflow.log_image(  # type: ignore[possibly-missing-attribute]
+                mlflow.Image(str(image_path)),  # type: ignore[possibly-missing-attribute]
                 key=f"figures/{filename}",
                 step=step,
                 synchronous=True,
@@ -735,15 +734,15 @@ class MLflowLogger(LoggerInterface):
             context: Training context.
         """
         mlflow.set_tracking_uri(self.config.uri)
-        mlflow.set_workspace(self.config.workspace)
+        mlflow.set_workspace(self.config.workspace)  # type: ignore[possibly-missing-attribute]
         mlflow.set_experiment(self.config.experiment)
-        run = mlflow.start_run(log_system_metrics=True)
+        run = mlflow.start_run(log_system_metrics=True)  # type: ignore[possibly-missing-attribute]
         self.run_id = run.info.run_id
 
         flattened = self._flatten_params(context.tracking_parameters)
         items = list(flattened.items())
         for start in range(0, len(items), self._PARAM_BATCH_SIZE):
-            mlflow.log_params(dict(items[start : start + self._PARAM_BATCH_SIZE]), synchronous=True)
+            mlflow.log_params(dict(items[start : start + self._PARAM_BATCH_SIZE]), synchronous=True)  # type: ignore[possibly-missing-attribute]
 
     def finished(self, context: Context) -> None:
         """Log final metrics and mark the MLflow run finished.
@@ -753,7 +752,7 @@ class MLflowLogger(LoggerInterface):
         """
         super().finished(context)
         if self.run_id is not None:
-            mlflow.end_run(status="FINISHED")
+            mlflow.end_run(status="FINISHED")  # type: ignore[possibly-missing-attribute]
             self.run_id = None
 
     def save_eval_plot(self, context: Context, iteration: int | None, fig: Figure) -> None:
@@ -838,7 +837,7 @@ class MLflowLogger(LoggerInterface):
                 }
                 for quantile in quantiles
             ]
-            mlflow.log_table(pd.DataFrame(rows), artifact_file="benchmark_quantile_scores.json")
+            mlflow.log_table(pd.DataFrame(rows), artifact_file="benchmark_quantile_scores.json")  # type: ignore[possibly-missing-attribute]
 
     def checkpoint(self, context: Context, iteration: int) -> None:
         """Upload the latest checkpoint to MLflow.
@@ -848,7 +847,7 @@ class MLflowLogger(LoggerInterface):
             iteration: Current training iteration.
         """
         if context.checkpointer.last_checkpoint is not None:  # type: ignore[union-attr]
-            mlflow.log_artifact(
+            mlflow.log_artifact(  # type: ignore[possibly-missing-attribute]
                 context.checkpointer.last_checkpoint.as_local_path(),  # type: ignore[union-attr]
                 artifact_path=f"steps/step-{iteration:08d}/checkpoints",
             )
@@ -877,7 +876,7 @@ class MLflowLogger(LoggerInterface):
             iteration: Current training iteration.
         """
         filename = self._sanitize_artifact_component(name)
-        mlflow.log_artifact(
+        mlflow.log_artifact(  # type: ignore[possibly-missing-attribute]
             str(html_path),
             artifact_path=f"steps/step-{iteration:08d}/html/{filename}",
         )
