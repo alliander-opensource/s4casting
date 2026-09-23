@@ -51,6 +51,7 @@ On first boot:
 cd s4casting
 bash setup.sh
 ```
+
 This will:
 - Install python package manager (uv) 
 - Install CUDA 
@@ -97,3 +98,22 @@ sudo dpkg -i cuda-keyring_1.1-1_all.deb
 sudo apt-get update
 sudo apt-get install -y cuda-toolkit-12-4
 ```
+
+## Working Behind a Private Package Mirror
+
+Some corporate environments require all package downloads to go through an
+internal registry mirror rather than public PyPI. The committed `uv.lock`
+always resolves from public PyPI (it is the basis for publicly reproducible
+builds and is kept up to date automatically); CI rejects lockfiles resolved
+against private registries.
+
+If your environment requires a mirror, configure it as uv's default index
+globally on your machine (see the [uv index documentation](https://docs.astral.sh/uv/concepts/indexes/)),
+then keep your locally-resolved lockfile out of git:
+
+- `make lock-local` — marks `uv.lock` as locally managed
+  (`git update-index --skip-worktree`) and resolves it through your default
+  index. Re-run it regularly to pick up refreshed dependency versions.
+- `make lock-reset` — restores the committed lockfile. Run it before pulling
+  or switching branches whenever `uv.lock` changed upstream, then re-run
+  `make lock-local`.
