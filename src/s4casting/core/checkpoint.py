@@ -60,7 +60,10 @@ class Checkpointer:
             return
 
         checkpoint = FileAccess(self._load).load_pydantic()
-        state_dict = torch.load(io.BytesIO(checkpoint["torch_model"]), map_location=context.machine.torch_device)
+        # weights_only restricts unpickling to tensors and primitive containers.
+        state_dict = torch.load(
+            io.BytesIO(checkpoint["torch_model"]), map_location=context.machine.torch_device, weights_only=True
+        )
         if not (bool(context.machine.ddp)) & ("module." in next(iter(state_dict.keys()))):
             # We load a DDP checkpoint into a non-DDP model, thus need to adjust the keys
             state_dict = {key.removeprefix("module."): value for key, value in state_dict.items()}
@@ -74,6 +77,7 @@ class Checkpointer:
             torch.load(
                 io.BytesIO(checkpoint["torch_optimizer"]),
                 map_location=context.machine.torch_device,
+                weights_only=True,
             )
         )
 

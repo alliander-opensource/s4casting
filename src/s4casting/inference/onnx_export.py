@@ -241,15 +241,21 @@ def load_configuration(path: str | Configuration) -> Configuration:
         Configuration: The loaded configuration.
 
     Raises:
+        ValueError: If the path does not point at a ``.toml`` file.
         FileNotFoundError: If the configuration file does not exist.
     """
     if isinstance(path, Configuration):
         return path
 
-    if not pathlib.Path(path).is_file():
+    # The path comes straight from the command line: resolve it and only accept a
+    # regular TOML file, so nothing else on the filesystem can be read through here.
+    config_path = pathlib.Path(path).expanduser().resolve()
+    if config_path.suffix.lower() != ".toml":
+        raise ValueError(f"Config file must be a .toml file: {path}")
+    if not config_path.is_file():
         raise FileNotFoundError(f"Config file not found: {path}")
 
-    with pathlib.Path(path).open("r", encoding="utf-8") as f:
+    with config_path.open("r", encoding="utf-8") as f:
         raw = tomlkit.load(f).unwrap()
 
     try:
@@ -337,7 +343,8 @@ def load_checkpoint_weights(model: nn.Module, checkpoint_path: str, device: str 
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
     checkpoint = FileAccess(checkpoint_path).load_pydantic()
-    state_dict = torch.load(io.BytesIO(checkpoint["torch_model"]), map_location=device)
+    # weights_only restricts unpickling to tensors and primitive containers.
+    state_dict = torch.load(io.BytesIO(checkpoint["torch_model"]), map_location=device, weights_only=True)
     state_dict = {key.removeprefix("module."): value for key, value in state_dict.items()}
     model.load_state_dict(state_dict)
 

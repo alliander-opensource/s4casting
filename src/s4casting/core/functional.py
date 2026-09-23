@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-import random
 
 import torch
 from torch.nn.functional import max_pool1d, pad
@@ -161,4 +160,6 @@ def select_rate(
     if not valid_rates:
         raise ValueError(f"No output sample interval >= input_rate ({input_rate})")
 
-    return torch.ones_like(torch.tensor(input_sample_intervals_minutes)) * random.choice(valid_rates)
+    # torch's generator keeps this under the same seeding as the rest of training
+    chosen = valid_rates[int(torch.randint(len(valid_rates), (1,)).item())]
+    return torch.ones_like(torch.tensor(input_sample_intervals_minutes)) * chosen

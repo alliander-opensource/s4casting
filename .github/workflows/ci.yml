@@ -23,12 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      # uv installs via its standalone script and provisions Python itself,
-      # avoiding an extra pinned action such as actions/setup-python.
+      # The official action is pinned to a commit SHA and verifies the uv binary it
+      # installs, unlike piping the standalone install script into a shell.
       - name: Install uv
-        env:
-          UV_VERSION: "0.11.32"  # keep in step with the uv used locally
-        run: curl --proto '=https' --tlsv1.2 -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.11.32"  # keep in step with the uv used locally
 
       # The committed lockfile must resolve from public PyPI so builds are
       # publicly reproducible; lockfiles resolved against private mirrors
@@ -46,7 +46,11 @@ jobs:
           uv python install ${{ matrix.python-version }}
           # --extra onnx installs the ONNX toolchain. Without it `ty` cannot resolve the
           # onnx imports in s4casting.inference.onnx_export and the export tests skip.
-          uv sync --extra onnx
+          # --locked refuses to run unless uv.lock matches pyproject.toml, so only the
+          # committed, resolved versions are installed. --no-build is not an option:
+          # pykeops and keopscore are published as source distributions only, and the
+          # project itself is built from source by poetry-core for the editable install.
+          uv sync --extra onnx --locked
 
       - name: Check
         run: |

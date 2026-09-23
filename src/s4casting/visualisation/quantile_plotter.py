@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import torch
-from numpy.typing import NDArray
 from plotly.subplots import make_subplots
 
 from s4casting.core.functional import quantile_pool1d
@@ -18,7 +18,7 @@ def plot_quantiles(
     Xm: torch.Tensor,
     Y: torch.Tensor,
     Ym: torch.Tensor,
-    times: NDArray | None,
+    times: pd.DatetimeIndex | None,
     input_sample_interval_minutes: int,
     output_sample_interval_minutes: int,
     report_type: str,
@@ -32,7 +32,7 @@ def plot_quantiles(
     Args:
         quantiles (torch.tensor): Quantile predictions.
         quantile_values (list): Which quantile do the quantiles belong to.
-        times (NDArray | None): Time stamps associated with the predictions; required for benchmark reports.
+        times (pd.DatetimeIndex | None): Time stamps associated with the predictions; required for benchmark reports.
         X (np.ndarray): Input data tensor of shape (B, T, F).
         Xm (np.ndarray): Input mask tensor of shape (B, T, F).
         Y (np.ndarray): Output data tensor of shape (B, T, F).
