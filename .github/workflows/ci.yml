@@ -25,13 +25,14 @@ jobs:
       - name: Install uv
         run: curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/install.sh | sh
 
-      # setup.sh --artifactory re-resolves uv.lock against the internal index;
-      # that lockfile must never be committed (public CI has no credentials).
+      # The committed lockfile must resolve from public PyPI so builds are
+      # publicly reproducible; lockfiles resolved against private mirrors
+      # must never be committed.
       - name: Check lockfile uses public PyPI
         run: |
-          if grep -q 'alliander.jfrog.io' uv.lock; then
-            echo "::error file=uv.lock::uv.lock is resolved against Artifactory." \
-                 "Restore the public lockfile: git checkout origin/main -- uv.lock"
+          if grep 'registry = "' uv.lock | grep -qv 'https://pypi.org/simple'; then
+            echo "::error file=uv.lock::uv.lock must resolve from public PyPI only." \
+                 "Restore it with: git checkout origin/main -- uv.lock"
             exit 1
           fi
 

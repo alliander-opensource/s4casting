@@ -150,9 +150,6 @@ plots/
 # dotenv files
 .env
 
-# Generated pip config containing Artifactory credentials
-pip.conf.local
-
 # IDE files
 .run/
 .vscode/
