@@ -48,8 +48,11 @@ jobs:
           # onnx imports in s4casting.inference.onnx_export and the export tests skip.
           # --locked refuses to run unless uv.lock matches pyproject.toml, so only the
           # committed, resolved versions are installed. --no-build is not an option:
-          # pykeops and keopscore are published as source distributions only, and the
-          # project itself is built from source by poetry-core for the editable install.
+          # pykeops and keopscore are published as source distributions only (uv refuses
+          # them under --no-build), and the project itself is built from source by
+          # poetry-core for the editable install. The setup scripts that do run are the
+          # ones inside those two sdists, whose sha256 hashes uv.lock pins and uv checks
+          # before building, so the executed code is exactly the reviewed release.
           uv sync --extra onnx --locked
 
       - name: Check
