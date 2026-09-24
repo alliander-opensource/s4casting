@@ -70,13 +70,14 @@ def read_checkpoint(checkpoint_path: str) -> tuple[dict[str, torch.Tensor], dict
         checkpoint_path (str): Local or remote path to the ``.pt`` container.
 
     Returns:
-        tuple[dict[str, torch.Tensor], dict[str, str]]: Weights and provenance metadata.
+        tuple[dict[str, torch.Tensor], dict[str, str]]: Weights and provenance metadata. The
+            checkpoint is recorded by file name only, so no local path ends up in artefacts.
     """
     checkpoint = FileAccess(checkpoint_path).load_pydantic()
     # weights_only restricts unpickling of the inner archive to tensors and primitive containers.
     state_dict = torch.load(io.BytesIO(checkpoint["torch_model"]), map_location="cpu", weights_only=True)
     metadata = {
-        "s4casting.checkpoint": checkpoint_path,
+        "s4casting.checkpoint": pathlib.Path(checkpoint_path).name,
         "s4casting.checkpoint_iteration": str(checkpoint["iteration"]),
         "s4casting.checkpoint_loss": str(checkpoint["loss"]),
     }
@@ -91,13 +92,15 @@ def read_safetensors(path: str) -> tuple[dict[str, torch.Tensor], dict[str, str]
 
     Returns:
         tuple[dict[str, torch.Tensor], dict[str, str]]: Weights and the file's metadata,
-            extended with the file's SHA-256 under ``s4casting.weights_sha256``.
+            extended with the file name under ``s4casting.weights`` and its SHA-256 under
+            ``s4casting.weights_sha256``.
     """
     local = FileAccess(path).as_local_path()
     with safe_open(str(local), framework="pt", device="cpu") as handle:
         metadata = unpack_metadata(handle.metadata() or {})
     state_dict = load_file(str(local), device="cpu")
-    metadata.setdefault("s4casting.checkpoint", path)
+    metadata.setdefault("s4casting.checkpoint", pathlib.Path(path).name)
+    metadata["s4casting.weights"] = pathlib.Path(path).name
     metadata["s4casting.weights_sha256"] = sha256_file(local)
     return strip_module_prefix(state_dict), metadata
 

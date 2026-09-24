@@ -22,7 +22,6 @@ import argparse
 import datetime
 import importlib.metadata
 import json
-import os
 import pathlib
 import re
 import shutil
@@ -69,13 +68,12 @@ def release_folder(out_dir: str, name: str) -> pathlib.Path:
     """
     if not RELEASE_NAME.fullmatch(name) or name in {".", ".."}:
         raise SystemExit(f"Release name {name!r} must contain only letters, digits, '.', '-' or '_'.")
-    base = os.path.realpath(os.getcwd())
-    folder = os.path.realpath(os.path.join(base, out_dir, name))
-    if not folder.startswith(base + os.sep):
+    base = pathlib.Path.cwd().resolve()
+    folder = (base / out_dir / name).resolve()
+    if folder == base or not folder.is_relative_to(base):
         raise SystemExit(f"--out-dir must stay inside the working directory {base}, got {out_dir!r}.")
-    path = pathlib.Path(folder)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -164,7 +162,7 @@ def package(args: argparse.Namespace) -> pathlib.Path:
     config_out = out / "training_config.toml"
     shutil.copyfile(config_src, config_out)
     provenance["s4casting.training_config_sha256"] = sha256_file(config_out)
-    provenance["s4casting.model_name"] = args.name
+    provenance["s4casting.model_name"] = out.name
 
     weights_out = out / f"{args.name}{SAFETENSORS_SUFFIX}"
     if args.checkpoint.endswith(SAFETENSORS_SUFFIX):
@@ -191,14 +189,14 @@ def package(args: argparse.Namespace) -> pathlib.Path:
 
     assets = [p for p in out.iterdir() if p.is_file() and p.name not in {CHECKSUMS_FILENAME, MANIFEST_FILENAME}]
     manifest = {
-        "name": args.name,
+        "name": out.name,
         "created_utc": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
         "code": {
             k.removeprefix("s4casting.code_"): v for k, v in provenance.items() if k.startswith("s4casting.code_")
         },
         "s4casting_version": provenance["s4casting.version"],
         "checkpoint": {
-            "source": args.checkpoint,
+            "source": pathlib.Path(args.checkpoint).name,
             "iteration": metadata.get("s4casting.checkpoint_iteration"),
             "loss": metadata.get("s4casting.checkpoint_loss"),
             "n_parameters": metadata.get("s4casting.n_parameters"),
