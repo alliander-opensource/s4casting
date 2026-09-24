@@ -1,0 +1,186 @@
+# SPDX-FileCopyrightText: Contributors to the s4casting project
+#
+# SPDX-License-Identifier: MPL-2.0
+#
+# Exact training configuration of transformer-lianderpower-v1 (checkpoint_440000),
+# recovered from the s4casting.config metadata embedded in the model's ONNX export
+# and validated against this repository's configuration schema.
+#
+# Not directly runnable on the public LianderPower release: the weather source
+# (data/weather_test_cov.json) is the 17-variable Open-Meteo extraction used in
+# training, of which the public dataset ships 4 variables. See MODEL_CARD.md.
+#
+# transformer.causal did not exist when this model was trained; the model is
+# non-causal, which is what "false" selects.
+
+[machine]
+device_kind = "cuda"
+local_rank = 0
+ddp = false
+ddp_loss_sync = true
+
+[io]
+feature_order = ["measurements", "weather", "time"]
+output = "out/"
+gap_skip_perc = 10
+context_window_valid_ratio = 0.8
+hash_datasets = false
+to_memory = false
+
+[io.features.measurements]
+location = "data/LianderPower/"
+loader = "croissant"
+nearest_neighbor = false
+n_features = 1
+main_dataset = ""
+subset_features = []
+
+[io.features.weather]
+location = "data/weather_test_cov.json"
+loader = "parquet"
+nearest_neighbor = true
+n_features = 21
+main_dataset = ""
+subset_features = ["temperature_2m", "relative_humidity_2m", "dew_point_2m", "precipitation", "rain", "snow_depth", "pressure_msl", "surface_pressure", "cloud_cover", "et0_fao_evapotranspiration", "vapour_pressure_deficit", "wind_speed_100m", "shortwave_radiation", "direct_radiation", "diffuse_radiation", "direct_normal_irradiance", "terrestrial_radiation"]
+
+[io.features.time]
+location = ""
+loader = "time"
+nearest_neighbor = false
+n_features = 3
+main_dataset = "measurements"
+subset_features = []
+
+[io.interval_context_limits.5]
+min_days = 7
+max_days = 10
+
+[io.interval_context_limits.10]
+min_days = 7
+max_days = 14
+
+[io.interval_context_limits.15]
+min_days = 11
+max_days = 32
+
+[io.interval_context_limits.30]
+min_days = 16
+max_days = 64
+
+[io.interval_context_limits.60]
+min_days = 16
+max_days = 720
+
+[io.interval_context_limits.1440]
+min_days = 32
+max_days = 720
+
+[io.interval_context_limits.10080]
+min_days = 64
+max_days = 720
+
+[model]
+base_sample_interval_minutes = 15
+input_sample_intervals_minutes = [15]
+output_sample_intervals_minutes = [15]
+context_window = [32]
+predict_width = 2
+alignment = 1440
+model = "transformer"
+internal_dtype = "float32"
+norm_clamp = 10.0
+norm_eps = 0.0001
+days_per_month = 30
+n_out_features = 1
+
+[model.transformer]
+latent_dim = 512
+n_heads = 8
+n_layers = 6
+dropout = 0.0
+attn_bias = true
+mlp_layers = 2
+causal = false
+
+[model.patch_encoder]
+arch = "linear"
+patch_size = 8
+n_layers = 4
+
+[model.patch_decoder]
+arch = "linear"
+patch_size = 8
+n_layers = 8
+
+[model.output_head]
+arch = "gmm"
+n_gaussians = 4
+quantile_values = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99]
+
+[model.loss]
+loss = "nll"
+alpha_clip = 0.1
+mask_mode = "masked"
+sigma_regularisation_factor = 0.0
+
+[model.loss.components]
+primary = 1.0
+
+[run]
+seed = 42069
+run_start_date = "2026-09-22"
+log_level = "info"
+
+[optimizer]
+learning_rate = 3e-05
+beta1 = 0.9
+beta2 = 0.99
+eps = 1e-08
+weight_decay = 0.0
+gradient_clipping = 1.0
+
+[scheduler]
+mode = "min"
+factor = 0.3
+patience = 2
+threshold = 0.0001
+threshold_mode = "rel"
+cooldown = 0
+min_lr = 5e-05
+eps = 1e-08
+
+[training]
+task = "prediction"
+max_retries = 10
+gradient_accumulation_steps = 1
+batch_size = 8
+evaluation_interval = 1000
+checkpoint_interval = 10000
+benchmarking_interval = 3000
+maximum_steps = 750000
+iteration = 1
+covariate_dropout = true
+
+[benchmarking]
+eval_quantiles = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+
+[benchmarking.benchmarks.StefBeamBenchmark]
+targets_file = "liander2024_targets.yaml"
+context_window_days = 32
+predict_window_days = 2
+input_sample_interval_minutes = 15
+
+[validation]
+split_type = "time"
+start_year = 2024
+percentage = 5
+
+[metrics]
+crps = true
+mae = false
+precision = false
+recall = false
+fbeta = false
+odn_monthly_mape = true
+ldn_monthly_mape = true
+loss = true

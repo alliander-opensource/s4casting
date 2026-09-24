@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import io
+import logging
 
 import torch
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from s4casting.core.context import Context
 from s4casting.core.hooks import CommonHooks, TrainingHooks
 from s4casting.data.files.loader import FileAccess
+from s4casting.inference.weights import MODULE_PREFIX, SAFETENSORS_SUFFIX, read_safetensors
 
 
 class SavedCheckpoint(BaseModel):
@@ -59,20 +61,16 @@ class Checkpointer:
         if not self._load:
             return
 
+        if self._load.endswith(SAFETENSORS_SUFFIX):
+            self._warm_start(context)
+            return
+
         checkpoint = FileAccess(self._load).load_pydantic()
         # weights_only restricts unpickling to tensors and primitive containers.
         state_dict = torch.load(
             io.BytesIO(checkpoint["torch_model"]), map_location=context.machine.torch_device, weights_only=True
         )
-        if not (bool(context.machine.ddp)) & ("module." in next(iter(state_dict.keys()))):
-            # We load a DDP checkpoint into a non-DDP model, thus need to adjust the keys
-            state_dict = {key.removeprefix("module."): value for key, value in state_dict.items()}
-
-        if bool(context.machine.ddp) & ("module." not in next(iter(state_dict.keys()))):
-            # We load a non-DDP checkpoint into a DDP model, thus need to adjust the keys
-            state_dict = {"module." + key: value for key, value in state_dict.items()}
-
-        context.model_container.model.load_state_dict(state_dict)
+        context.model_container.model.load_state_dict(self._align_ddp_keys(context, state_dict))
         context.optimizer.load_state_dict(
             torch.load(
                 io.BytesIO(checkpoint["torch_optimizer"]),
@@ -82,6 +80,43 @@ class Checkpointer:
         )
 
         context.model_container.model.to(context.machine.torch_device)
+
+    def _warm_start(self, context: Context) -> None:
+        """Initialise the model from a released safetensors weights file.
+
+        Released weights carry no optimizer state, so this is a warm start rather than a
+        resume: the optimizer, scheduler and iteration counter start fresh.
+
+        Args:
+            context (Context): Training context.
+        """
+        state_dict, metadata = read_safetensors(self._load)  # type: ignore[arg-type]
+        context.model_container.model.load_state_dict(self._align_ddp_keys(context, state_dict))
+        context.model_container.model.to(context.machine.torch_device)
+        logging.info(
+            "Warm start from %s (source iteration %s, code %s); optimizer state starts fresh.",
+            self._load,
+            metadata.get("s4casting.checkpoint_iteration", "unknown"),
+            metadata.get("s4casting.code_tag", "unknown"),
+        )
+
+    @staticmethod
+    def _align_ddp_keys(context: Context, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Add or strip the ``module.`` prefix so the keys match the (non-)DDP model in use.
+
+        Args:
+            context (Context): Training context, consulted for the DDP flag.
+            state_dict (dict[str, torch.Tensor]): Weights as read from disk.
+
+        Returns:
+            dict[str, torch.Tensor]: Weights under keys the current model accepts.
+        """
+        first_key = next(iter(state_dict.keys()))
+        if not bool(context.machine.ddp) and first_key.startswith(MODULE_PREFIX):
+            return {key.removeprefix(MODULE_PREFIX): value for key, value in state_dict.items()}
+        if bool(context.machine.ddp) and not first_key.startswith(MODULE_PREFIX):
+            return {MODULE_PREFIX + key: value for key, value in state_dict.items()}
+        return state_dict
 
     def save(self, context: Context, iteration: int | None) -> None:
         """Save checkpoint from the model and optimizer.
