@@ -80,7 +80,8 @@ class DatasetFormatter:
         elif file.endswith(".csv"):
             df = pd.read_csv(path, usecols=columns)
         df = df[columns]
-        df[self.time_col] = pd.to_datetime(df[self.time_col]).astype("int64") // 10**9  # type: ignore
+        # as_unit("s") keeps this correct whatever resolution pandas inferred (ns, us, ms or s)
+        df[self.time_col] = pd.to_datetime(df[self.time_col]).dt.as_unit("s").astype("int64")  # type: ignore
         return df
 
     def update_spans(self, span_rows: list[dict[str, Any]], df: pd.DataFrame, i: int) -> list[dict[str, Any]]:

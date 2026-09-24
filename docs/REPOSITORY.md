@@ -51,7 +51,7 @@ This document provides a high-level overview of the S4Casting code repository, o
 - `core/batcher.py`: Interval slicing, dataset wrapping, DataLoader creation.
 - `core/benchmarker.py`: benchmark runner: Location‑based benchmarking sampling & reporting.
 - `core/hooks.py`: Event system (step, evaluate, benchmark_complete, etc.).
-- `core/logger.py`: Stdout / CSV / WandB logging via hook callbacks.
+- `core/logger.py`: Stdout / CSV / W&B / MLflow logging via hook callbacks.
 - `core/checkpoint.py`: Save/load model + optimizer state.
 - `core/config.py`: Pydantic models for all config sections.
 - `core/trainer.py`: Main training loop orchestration.

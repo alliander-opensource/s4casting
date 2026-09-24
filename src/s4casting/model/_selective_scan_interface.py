@@ -20,6 +20,12 @@ import os
 
 dir_path = os.path.dirname(os.path.realpath(__file__)) + "/selective_scan"
 
+# Follow the toolkit setup_cuda.sh actually installed rather than a fixed
+# version: the CUDA release that matches torch differs per image, so a
+# hardcoded path silently resolves to a directory that does not exist.
+_cuda_home = os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH") or "/usr/local/cuda"
+_extra_include_paths = [os.path.join(_cuda_home, "include")]
+
 # import selective_scan_cuda
 selective_scan_cuda = load(
     "selective_scan_cuda",
@@ -35,7 +41,7 @@ selective_scan_cuda = load(
         f"{dir_path}/selective_scan_bwd_fp32_complex.cu",
         f"{dir_path}/selective_scan_fwd_bf16.cu",
     ],
-    extra_include_paths=["/usr/local/cuda-12.4/include"],
+    extra_include_paths=_extra_include_paths,
 )
 
 

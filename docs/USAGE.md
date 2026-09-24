@@ -43,11 +43,11 @@ uv run torchrun --standalone scripts/train.py configs/cuda.toml
 uv run torchrun --standalone --nproc_per_node=4 scripts/train.py configs/cuda-ddp.toml
 
 # overriding parameters on CLI
-uv run torchrun --standalone scripts/train.py configs/cpu.toml --run.persist_to_wandb_project=main_project
-uv run python scripts/train.py configs/cpu.toml --run.persist_to_wandb_project=main_project
+uv run torchrun --standalone scripts/train.py configs/cpu.toml --logging.wandb.project=main_project
+uv run python scripts/train.py configs/cpu.toml --logging.mlflow.experiment=my_experiment
 
 # overriding parameters via env variables
-export S4_run__persist_to_wandb_project="main_project"
+export S4_logging__wandb__project="main_project"
 uv run torchrun --standalone scripts/train.py configs/cpu.toml
 ```
 
@@ -75,18 +75,47 @@ If you want more API calls than the default, put your Open-Meteo API key in a lo
 Enable logging to W&B by adding this to your .toml:
 
 ```toml
-[run]
-persist_to_wandb_project = "forecasting-s4"  
-wandb_notes = "<SOME NOTES ABOUT THE RUN>"    
+[logging.wandb]
+project = "forecasting-s4"
+notes = "<SOME NOTES ABOUT THE RUN>"
+mode = "online"
 
 [authentication]
-wandb_api_key = "<API-KEY-FROM-WANDB>"       
+wandb_api_key = "<API-KEY-FROM-WANDB>"
 ```
 
 Notes:
 - W&B collects metrics, system stats, and artifacts so you can view runs on wandb.ai.
 - The API key authenticates your session, store it securely (e.g., in configs/local/*.toml or env vars).
-- If these fields are not set, W&B logging stays disabled and the logging is done locally.
+- W&B online mode requires an API key. Set `mode = "offline"` when no key is available.
+- A configured `run_id` resumes that run when it exists and creates it otherwise.
+
+## Track training with MLflow
+
+Configure MLflow with its own logging section:
+
+```toml
+[logging.mlflow]
+uri = "http://127.0.0.1:5000/"
+experiment = "dev"
+```
+
+The tracking `uri` is a free-form string that defaults to `http://127.0.0.1:5000/`:
+any HTTP(S) endpoint or other URI accepted by `mlflow.set_tracking_uri` works
+(e.g. a local server, a cluster service, or a managed tracking backend).
+
+The workspace defaults to `default`. Other workspaces can be configured, but
+MLflow Image Grid does not currently display their images.
+
+If your tracking server stores artifacts in S3, AWS credentials with write
+access to the artifact bucket are required (for example via environment
+variables or the `[authentication]` section).
+
+For local testing, start a SQL-backed workspace-enabled server:
+
+```bash
+uv run mlflow server --enable-workspaces
+```
 
 ## Running in CodeEditor (VSCode on SageMaker)
 
@@ -112,4 +141,3 @@ Notes:
   ```bash
   screen -ls
   ```
-

@@ -33,9 +33,6 @@ class S4ModelInterface(BacktestForecasterMixin, BacktestBatchForecasterMixin):
         self.context = context
         self.target = target
 
-        if "time" in context.batcher.datasets_per_source:  # ty: ignore[possibly-missing-attribute]
-            raise Exception("Cannot run stef beam with time as an input feature")
-
         # Provide s4 configurations to s4interface
         cfg = context.configuration.model
         predict_window_days = context.configuration.benchmarking.benchmarks["StefBeamBenchmark"].predict_window_days  # type: ignore[possibly-missing-attribute]
@@ -100,6 +97,7 @@ class S4ModelInterface(BacktestForecasterMixin, BacktestBatchForecasterMixin):
             horizons=batch,
             cfg=self.context.configuration,
             device=self.context.machine.benchmarking_device,
+            target=self.target,
         )
         loader = DataLoader(
             ds,

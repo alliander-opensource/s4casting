@@ -5,7 +5,6 @@ ddp = false
 [training]
 batch_size = 64
 gradient_accumulation_steps = 1
-evaluation_batch_amount = 16
 evaluation_interval = 100
 checkpoint_interval = 100
 benchmarking_interval = 500
@@ -19,21 +18,19 @@ percentage = 50
 mae = true
 
 [model]
-task="prediction"
 context_window = [11]
 predict_width = 2
-predict_width_mode = "days"
 base_sample_interval_minutes = 15
 input_sample_intervals_minutes = [15]
 output_sample_intervals_minutes = [15]
 alignment = 1440
 model = "ssm"
 norm_clamp = 10
-latent_dim = 64
 
 [model.ssm]
 kernel = "s6"
 n_layers = 3
+latent_dim = 64
 
 [model.patch_encoder]
 arch = "linear"
@@ -66,8 +63,7 @@ gradient_clipping = 1
 [io]
 feature_order = ["measurements"]
 output = "out/"
-input_window_valid_ratio = 1.0
-predict_window_valid_ratio = 1.0
+context_window_valid_ratio = 1.0
 
 [io.features.measurements]
 location = "/tmp/tests/output_test/external_data_wrapped.json"

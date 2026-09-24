@@ -10,6 +10,7 @@ seed=42069
 
 [training]
 task="prediction"
+covariate_dropout = true
 batch_size = 32
 gradient_accumulation_steps = 1
 evaluation_interval = 1_000
@@ -40,13 +41,10 @@ latent_dim = 1024
 n_heads = 16
 n_layers = 9
 dropout = 0
-is_causal = false
 attn_bias = true
-mlp_bias = false
 mlp_layers = 2
-mlp_activation = "gelu"
-use_cross_attention = false
-context_n_layers = 4
+# Causal time attention: tokens only attend to the past. Group attention stays bidirectional.
+causal = true
 
 [model.output_head]
 arch = "gmm"
@@ -77,9 +75,8 @@ weight_decay = 0
 gradient_clipping = 1
 
 [io]
-feature_order = ["measurements_cdb", "weather"]
+feature_order = ["measurements_cdb", "weather", "time"]
 output = "out/"
-gap_skip_hours  = 1
 
 [io.features.measurements_cdb]
 location = "data/LianderPower/"
@@ -96,3 +93,9 @@ subset_features = [
     "shortwave_radiation",
     "direct_normal_irradiance"
 ]
+
+[io.features.time]
+location = ""
+loader = "time"
+main_dataset = "measurements"
+n_features = 3

@@ -18,7 +18,7 @@ def get_timestamps(
     predict_width_days: int,
     output_sample_interval_minutes: int,
     days_ahead: int,
-) -> NDArray:
+) -> pd.DatetimeIndex:
     """Get times for n day ahead intervals.
 
     Args:
@@ -29,7 +29,7 @@ def get_timestamps(
         days_ahead (int): number of days ahead
 
     Returns:
-        NDArray: Array of datetime objects representing the times.
+        pd.DatetimeIndex: UTC timestamps covering every day-ahead window.
     """
     end_of_window = datetime.timedelta(days=input_width_days + predict_width_days - 1)
     start_dates = [
@@ -40,19 +40,19 @@ def get_timestamps(
     # use start_dates to construct correct dateranges
     times = pd.date_range(
         start=start_dates[0],
-        periods=days_ahead * 24 * 60 / output_sample_interval_minutes,
+        periods=days_ahead * 24 * 60 // output_sample_interval_minutes,
         freq=datetime.timedelta(minutes=output_sample_interval_minutes),
         tz="UTC",
     )
     for start_date in start_dates[1:]:
         temp_index = pd.date_range(
             start=start_date,
-            periods=days_ahead * 24 * 60 / output_sample_interval_minutes,
+            periods=days_ahead * 24 * 60 // output_sample_interval_minutes,
             freq=datetime.timedelta(minutes=output_sample_interval_minutes),
             tz="UTC",
         )
         times = times.union(temp_index)
-    return times  # ty: ignore[invalid-return-type]
+    return times
 
 
 def fill_gaps(

@@ -16,7 +16,7 @@ def test_create_model(tmp_path):
     config = cfg.ModelConfiguration(ssm=cfg.SSMConfiguration())
     io_config = cfg.IOConfiguration(
         feature_order=["main"],
-        features={"main": cfg.DatasetConfiguration(name="main", location=str(tmp_path / "main"))},
+        features={"main": cfg.DatasetConfiguration(location=str(tmp_path / "main"))},
         output=str(tmp_path / "output"),
         load_checkpoint=None,
     )

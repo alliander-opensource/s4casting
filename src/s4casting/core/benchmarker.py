@@ -100,6 +100,8 @@ class Benchmarker:
             0,
             self.bench_config.predict_dim,  # type: ignore[attr-defined]
             predict_window_samples,
+            n_time_features=context.batcher.n_time_features,  # type: ignore[attr-defined]
+            covariate_dropout=False,
         )
 
         times = get_timestamps(

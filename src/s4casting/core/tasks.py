@@ -37,11 +37,12 @@ class TaskDataset:
         """
         return len(self.dataset)
 
-    def get_masks(self, sample):
+    def get_masks(self, sample, _sample_interval):
         """Get the input and output masks for a given sample.
 
         Args:
             sample: The sample for which to get the masks.
+            _sample_interval: The sample interval in minutes (unused in the base implementation).
 
         Returns:
             tuple: A tuple containing the input mask and output mask.
@@ -118,6 +119,41 @@ class TaskDataset:
         ym = torch.cat([zeros, ym], dim=0)
         return (X, xm, ym)
 
+    def drop_covariates(self, X, xm, ym):
+        """Randomly drop covariates for training group attention.
+
+        Args:
+            X: X tensor.
+            xm: Mask tensor.
+            ym: Mask tensor.
+
+        Returns:
+            xm: Mask tensor.
+        """
+        if not self.covariate_dropout:
+            return X, xm, ym
+
+        indices = torch.arange(
+            self.predict_dim + 1,
+            xm.shape[1] - self.n_time_features,
+            device=xm.device,
+        )
+        n_covariates = len(indices)
+
+        if n_covariates == 0:
+            return X, xm, ym
+
+        perm = torch.randperm(n_covariates, device=X.device)
+        X[:, indices] = X[:, indices][:, perm]
+        xm[:, indices] = xm[:, indices][:, perm]
+        ym[:, indices] = ym[:, indices][:, perm]
+
+        n_keep = torch.randint(0, n_covariates + 1, (), device=X.device).item()
+        xm[:, indices[n_keep:]] = 0
+        ym[:, indices[n_keep:]] = 0
+
+        return X, xm, ym
+
     def __getitem__(self, idx):
         """Get the task sample at the specified index.
 
@@ -132,7 +168,8 @@ class TaskDataset:
         """
         for attempt in range(self.max_retries):
             X, sample_config = self.dataset[idx]
-            xm, ym = self.get_masks(X)
+            xm, ym = self.get_masks(X, sample_config.sample_interval_minutes)
+            X, xm, ym = self.drop_covariates(X, xm, ym)
             sample_config.predict_window_samples = self.predict_window_samples
             sample_config.context_window_samples = self.max_context_samples
 
@@ -166,7 +203,16 @@ class TaskDataset:
 class PredictionTaskDataset(TaskDataset):
     """Dataset wrapper for prediction tasks."""
 
-    def __init__(self, dataset, max_context_samples, max_retries, predict_dim, predict_window_samples):
+    def __init__(
+        self,
+        dataset,
+        max_context_samples,
+        max_retries,
+        predict_dim,
+        predict_window_samples,
+        n_time_features,
+        covariate_dropout,
+    ):
         """Initialize the PredictionTaskDataset.
 
         Args:
@@ -175,30 +221,35 @@ class PredictionTaskDataset(TaskDataset):
             max_retries: Number of retries at a different index if data is not valid.
             predict_dim: The dimension to predict.
             predict_window_samples: The window size for prediction.
+            n_time_features: The number of time features (3 - unix time, lat, lon).
+            covariate_dropout: Boolean, if training with covariate dropout.
         """
         super().__init__(dataset, max_context_samples, max_retries)
         self.predict_window_samples = predict_window_samples
         self.predict_dim = predict_dim
+        self.n_time_features = n_time_features
+        self.covariate_dropout = covariate_dropout
 
-    def get_masks(self, sample):
+    def get_masks(self, sample, _sample_interval):
         """Get the input and output masks for prediction tasks.
 
         Args:
             sample: The sample for which to get the masks.
+            _sample_interval: The sample interval in minutes (unused; window is fixed).
 
         Returns:
             tuple: A tuple containing the input mask and output mask.
         """
-        x = torch.ones(sample.shape)
-        y = torch.zeros(sample.shape)
-        x[-self.predict_window_samples :, self.predict_dim] = 0
-        y[-self.predict_window_samples :, self.predict_dim] = 1
+        xm = torch.ones(sample.shape)
+        ym = torch.zeros(sample.shape)
+        xm[-self.predict_window_samples :, self.predict_dim] = 0
+        ym[-self.predict_window_samples :, self.predict_dim] = 1
 
         # Mask out any nans
-        x[torch.isnan(sample)] = 0
-        y[torch.isnan(sample)] = 0
+        xm[torch.isnan(sample)] = 0
+        ym[torch.isnan(sample)] = 0
 
-        return (x, y)
+        return (xm, ym)
 
 
 class VariablePredictionTaskDataset(TaskDataset):
@@ -210,7 +261,15 @@ class VariablePredictionTaskDataset(TaskDataset):
     """
 
     def __init__(
-        self, dataset, max_context_samples, max_retries, predict_dim, min_predict_width_perc, max_predict_width_perc
+        self,
+        dataset,
+        max_context_samples,
+        max_retries,
+        predict_dim,
+        min_predict_width_perc,
+        max_predict_width_perc,
+        n_time_features,
+        covariate_dropout,
     ):
         """Initialize the VariablePredictionTaskDataset.
 
@@ -223,11 +282,15 @@ class VariablePredictionTaskDataset(TaskDataset):
                 of sample length (0.0 to 1.0).
             max_predict_width_perc: Maximum prediction window as a percentage
                 of sample length (0.0 to 1.0).
+            n_time_features: The number of time features (3 - unix time, lat, lon).
+            covariate_dropout: Boolean, if training with covariate dropout.
         """
         super().__init__(dataset, max_context_samples, max_retries)
         self.predict_dim = predict_dim
         self.min_predict_width_perc = min_predict_width_perc
         self.max_predict_width_perc = max_predict_width_perc
+        self.n_time_features = n_time_features
+        self.covariate_dropout = covariate_dropout
 
     def get_masks(self, sample, sample_interval):
         """Get the input and output masks with randomly sized prediction window.
@@ -266,7 +329,17 @@ class VariablePredictionTaskDataset(TaskDataset):
 class RandomMaskingTaskDataset(TaskDataset):
     """Dataset wrapper that applies random masking to samples."""
 
-    def __init__(self, dataset, max_context_samples, max_retries, min_mask_size, mask_fraction=0.3):
+    def __init__(
+        self,
+        dataset,
+        max_context_samples,
+        max_retries,
+        min_mask_size,
+        n_time_features,
+        covariate_dropout,
+        mask_fraction=0.3,
+        predict_dim=0,
+    ):
         """Initialize the RandomMaskingTaskDataset.
 
         Args:
@@ -276,16 +349,23 @@ class RandomMaskingTaskDataset(TaskDataset):
             min_mask_size: The min_mask_size in samples.
                        Should be a multiple of the model's `patch_size`.
             mask_fraction: The fraction of mask samples.
+            predict_dim: The target dimension.
+            n_time_features: The number of time features (3 - unix time, lat, lon).
+            covariate_dropout: Boolean, if training with covariate dropout.
         """
         super().__init__(dataset, max_context_samples, max_retries)
         self.min_mask_size = min_mask_size
         self.mask_fraction = mask_fraction
+        self.predict_dim = predict_dim
+        self.n_time_features = n_time_features
+        self.covariate_dropout = covariate_dropout
 
-    def get_masks(self, sample):
+    def get_masks(self, sample, _sample_interval):
         """Get the input and output masks with random masking.
 
         Args:
             sample: The sample for which to get the masks.
+            _sample_interval: The sample interval in minutes (unused for random masking).
 
         Returns:
             tuple: A tuple containing the input mask and output mask.

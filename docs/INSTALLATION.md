@@ -43,11 +43,9 @@ Recommended settings:
 ### 3. Clone the Repository
 Use either:
 - GitHub integration in VSCode, or  
-- Git CLI (see Confluence guide)
+- Git CLI
 
-> Ask for the configurations from the administrator.
-
-### 5. Run the Setup Script
+### 4. Run the Setup Script
 On first boot:
 ```bash
 cd s4casting
@@ -61,14 +59,14 @@ This will:
 
 > Takes a few minutes. Only needed once per instance.
 
-### 6. Download data 
-You can download all the data from aws with the following command: 
+### 5. Download data 
+You can download all the data with the following command: 
 
 ```bash
 bash data/get_data.sh
 ```
 
-### 7. You are ready to go!
+### 6. You are ready to go!
 
 ## Setting Up a Local Environment
 
@@ -85,7 +83,7 @@ uv sync --python 3.12
 ### 2. Download the Data
 From the home directory run:
 ```bash
-./data/get_data.sh`
+./data/get_data.sh
 ```
 
 ### 3. Install CUDA (optional)

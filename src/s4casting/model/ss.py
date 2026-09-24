@@ -104,9 +104,11 @@ class SSModel(nn.Module):
             clamp=self.norm_clamp,
             dims=torch.arange(x.shape[-1] - 3 * isinstance(self.patch_encoder, SeperateLocTime)),
         )
+
         x, weather_gt, weather_mask = self.weather_aux.prepare(x)
         x = self.patch_encoder(x, input_interval, output_interval)  # B T F -> B T/P E
         x_enc = x
+
         for layer in self.ss_layers:
             x = layer(x, output_interval / self.base_sample_interval_minutes)
 

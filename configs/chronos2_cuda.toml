@@ -34,7 +34,7 @@ n_out_features = 1
 model_id = "autogluon/chronos-2-small"
 #model_id = "amazon/chronos-2"
 freeze_backbone = false
-use_lora = false 
+use_lora = false
 #lora_rank = 8
 #lora_alpha = 16
 #lora_target_modules = ["q", "k", "v", "o", "output_patch_embedding.output_layer"]
@@ -66,7 +66,6 @@ gradient_clipping = 1
 [io]
 feature_order = ["measurements_cdb",  "weather"]
 output = "out/"
-gap_skip_hours = 1
 
 [io.features.measurements_cdb]
 location = "data/LianderPower/"

@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
+from calendar import timegm
 from collections import defaultdict
 
 import numpy as np
@@ -32,7 +33,6 @@ from s4casting.data.dataset.indexes import (
     fill_gaps,
     intervals_for_date,
     intervals_for_location,
-    intervals_for_year,
     substract,
 )
 from s4casting.data.utils import build_valid_context_sampling_pairs, collate_single_interval
@@ -70,11 +70,28 @@ class Batcher:
             io_config, model_config, self.datasets_per_source
         )
 
+        # get metadata covariate indices to prevent permutation
+        self.n_time_features = sum(
+            io_config.features[name].n_features
+            for name in io_config.feature_order
+            if io_config.features[name].loader == "time"
+        )
+        # The mixer is a fixed Linear(mixer_size, mixer_size) over the post-encoder
+        # sequence. The linear PatchEncoder collapses patch_size raw steps into one
+        # token, so the raw-context cap is scaled by patch_size; the SSEncoder keeps
+        # the sequence length, so it is not.
+        if model_config.ssm is not None and model_config.ssm.mixer_size is not None:
+            max_context_len = model_config.ssm.mixer_size
+            if model_config.patch_encoder.arch == "linear":
+                max_context_len *= model_config.patch_encoder.patch_size
+        else:
+            max_context_len = None
+
         valid_context_windows = build_valid_context_sampling_pairs(
             context_days=model_config.context_window,
             sample_intervals_minutes=model_config.input_sample_intervals_minutes,
             min_points=32,
-            max_context_len=model_config.ssm.mixer_size if model_config.ssm is not None else None,
+            max_context_len=max_context_len,
             interval_context_limits=io_config.interval_context_limits,
         )
         context_sample_rates = [
@@ -134,6 +151,8 @@ class Batcher:
             model_config.alignment,
             model_config.base_sample_interval_minutes,
             model_config.predict_width,
+            n_time_features=self.n_time_features,
+            covariate_dropout=train_config.covariate_dropout,
         )
         # Validation uses train configuration for tasks
         self.validation = self._get_task_dataset(
@@ -144,6 +163,8 @@ class Batcher:
             model_config.alignment,
             model_config.base_sample_interval_minutes,
             model_config.predict_width,
+            n_time_features=self.n_time_features,
+            covariate_dropout=False,
         )
         self.train_loader, self.validation_loader = self.create_data_loaders(train_config, machine, run_config)
         # hack for now  to prevent errors
@@ -215,10 +236,14 @@ class Batcher:
                 and benchmarking datasets.
         """
         val_intervals = []
-        for _non_benchmark_intervals in non_benchmark_intervals:
+        for _non_benchmark_intervals, _ctx_minutes in zip(non_benchmark_intervals, context_windows_minutes):
             if validation_config.split_type == "time":
-                chosen_year = validation_config.start_year
-                val_intervals.append(intervals_for_year(_non_benchmark_intervals, chosen_year))
+                # Strict temporal holdout: a training window starting at `s` reads
+                # [s, s + context window], so any window start within one context
+                # window of the cutoff would leak post-cutoff data into training.
+                # All window starts from (cutoff - context) onwards go to validation.
+                cutoff = timegm((validation_config.start_year, 1, 1, 0, 0, 0))
+                val_intervals.append(intervals_for_date(_non_benchmark_intervals, cutoff - _ctx_minutes * 60))
 
             elif validation_config.split_type == "random":
                 val_indices = np.random.default_rng(run_config.seed).choice(
@@ -268,7 +293,6 @@ class Batcher:
         benchmark = TimeseriesDataset(
             IntervalDataset(benchmark_intervals, align), context_window_minutes * 60, dataset, sample
         )
-
         return train, validation, benchmark
 
     def update_sampler_epoch(self, context: Context, _iteration: int | None) -> None:  # type: ignore
@@ -353,6 +377,9 @@ class Batcher:
         alignment: int,
         sample_rate: int,
         predict_width: int | tuple[float, float] = 2,
+        *,
+        n_time_features: int,
+        covariate_dropout: bool,
     ) -> PredictionTaskDataset | RandomMaskingTaskDataset | VariablePredictionTaskDataset:
         """Get the task dataset based on the task name.
 
@@ -364,6 +391,8 @@ class Batcher:
             alignment (int): data alignment.
             sample_rate (int): base sample rate of dataset.
             predict_width (int or tuple[float, float]): prediction window if using prediction task.
+            n_time_features: The number of time features (3 - unix time, lat, lon).
+            covariate_dropout: Boolean, if training with covariate dropout.
 
         Returns:
             torch.utils.data.Dataset: The task dataset.
@@ -377,6 +406,8 @@ class Batcher:
                 max_retries,
                 0,
                 (predict_width * 24 * 60) // sample_rate,  # type: ignore
+                n_time_features=n_time_features,
+                covariate_dropout=covariate_dropout,
             )
 
         if task_name == "masking":
@@ -385,6 +416,8 @@ class Batcher:
                 max_context_samples,
                 max_retries,
                 alignment // sample_rate,
+                n_time_features=n_time_features,
+                covariate_dropout=covariate_dropout,
             )  # type: ignore
 
         if task_name == "randomprediction":
@@ -397,6 +430,8 @@ class Batcher:
                 predict_dim=0,
                 min_predict_width_perc=predict_width[0],
                 max_predict_width_perc=predict_width[1],
+                n_time_features=n_time_features,
+                covariate_dropout=covariate_dropout,
             )
 
         raise ValueError(f"Unknown task: {task_name}")

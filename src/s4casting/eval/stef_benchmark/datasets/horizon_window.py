@@ -7,6 +7,7 @@ from datetime import timedelta
 import numpy as np
 import torch
 from openstef_beam.backtesting.restricted_horizon_timeseries import RestrictedHorizonVersionedTimeSeries
+from openstef_beam.benchmarking.models import BenchmarkTarget
 from openstef_core.utils.datetime import align_datetime
 from torch.utils.data import Dataset
 
@@ -19,6 +20,7 @@ class HorizonWindowDataset(Dataset):
         horizons: list[RestrictedHorizonVersionedTimeSeries],
         cfg,
         device,
+        target: BenchmarkTarget | None = None,
     ):
         """Initialize the dataset.
 
@@ -26,11 +28,13 @@ class HorizonWindowDataset(Dataset):
             horizons : List of RestrictedHorizonVersionedTimeSeries objects.
             cfg: Configuration object with dataset parameters.
             device: Device to load the tensors onto.
+            target: Contains metadata of target signals.
         """
         self.horizons = horizons
         self.cfg = cfg.benchmarking.benchmarks["StefBeamBenchmark"]
         self.feature_order = cfg.io.feature_order
         self.device = device
+        self.target = target
         self.n_predict = (
             cfg.benchmarking.benchmarks["StefBeamBenchmark"].predict_window_days * 24 * 60
         ) // cfg.benchmarking.benchmarks["StefBeamBenchmark"].input_sample_interval_minutes
@@ -85,6 +89,22 @@ class HorizonWindowDataset(Dataset):
                 axis=-1,
             ).astype("float32", copy=False)
 
+        # add time features
+        if "time" in self.feature_order:
+            if self.target is None:
+                raise ValueError("StefBeam time encoding requires a BenchmarkTarget with latitude/longitude.")
+
+            unix_seconds = w.index.as_unit("s").astype("int64").to_numpy(dtype=np.float32)
+            time_features = np.stack(
+                [
+                    unix_seconds,
+                    np.full(len(w), self.target.latitude, dtype=np.float32),
+                    np.full(len(w), self.target.longitude, dtype=np.float32),
+                ],
+                axis=-1,
+            )
+            inp = np.concatenate([inp, time_features], axis=-1).astype("float32", copy=False)
+
         X = torch.from_numpy(inp)
         xm = torch.ones_like(X)
         xm[-self.n_predict :, 0] = 0  # mask load, mimic training where prediction values are zeroed
@@ -100,5 +120,5 @@ class HorizonWindowDataset(Dataset):
         return {
             "X": X,
             "xm": xm,
-            "ts": w.index[-self.n_predict :].astype("int64").tolist(),  # timestamps
+            "ts": w.index[-self.n_predict :].as_unit("ns").astype("int64").tolist(),  # ns timestamps, decoded as such
         }

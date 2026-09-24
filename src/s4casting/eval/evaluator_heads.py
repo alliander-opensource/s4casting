@@ -2,8 +2,8 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
+import pandas as pd
 import torch
-from numpy.typing import NDArray
 
 from s4casting.core.context import Context
 from s4casting.core.distributions import gmm_to_quantiles
@@ -110,7 +110,7 @@ class EvaluatorHead:
         output_interval: int,
         n_day_ahead: int,
         location: str | None = None,
-        times: NDArray | None = None,
+        times: pd.DatetimeIndex | None = None,
         sign: str | None = None,
     ) -> None:
         """Report the evaluation results.
@@ -125,7 +125,7 @@ class EvaluatorHead:
             loss (float): The mean loss of the signal
             iteration (int): Current iteration number.
             location (str): Location identifier.
-            times (NDArray): Dates for the predictions.
+            times (pd.DatetimeIndex | None): Dates for the predictions.
             sign (str): Sign for metrics calculation.
             report_type (str): Type of report (e.g., "benchmark", "evaluation", "inference").
             output_interval (int): Output sample rate of eval step.
@@ -182,7 +182,7 @@ class EvaluatorHead:
             Xm,
             Y,
             Ym,
-            times,  # ty: ignore[invalid-argument-type]
+            times,
             input_interval,
             output_interval,
             report_type,
