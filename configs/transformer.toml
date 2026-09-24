@@ -75,7 +75,7 @@ weight_decay = 0
 gradient_clipping = 1
 
 [io]
-feature_order = ["measurements_cdb", "weather"]
+feature_order = ["measurements_cdb", "weather", "time"]
 output = "out/"
 
 [io.features.measurements_cdb]
@@ -93,3 +93,9 @@ subset_features = [
     "shortwave_radiation",
     "direct_normal_irradiance"
 ]
+
+[io.features.time]
+location = ""
+loader = "time"
+main_dataset = "measurements"
+n_features = 3
