@@ -208,7 +208,8 @@ def write_checksums(paths: list[pathlib.Path], output_path: pathlib.Path) -> pat
         pathlib.Path: The path written.
     """
     lines = [f"{sha256_file(path)}  {path.name}" for path in sorted(paths, key=lambda p: p.name)]
-    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with output_path.open("w", encoding="utf-8") as handle:
+        handle.writelines(line + "\n" for line in lines)
     return output_path
 
 

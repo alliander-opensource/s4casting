@@ -164,7 +164,7 @@ def package(args: argparse.Namespace) -> pathlib.Path:
     provenance["s4casting.training_config_sha256"] = sha256_file(config_out)
     provenance["s4casting.model_name"] = out.name
 
-    weights_out = out / f"{args.name}{SAFETENSORS_SUFFIX}"
+    weights_out = out / f"{out.name}{SAFETENSORS_SUFFIX}"
     if args.checkpoint.endswith(SAFETENSORS_SUFFIX):
         state_dict, metadata = read_safetensors(args.checkpoint)
         metadata.pop("s4casting.weights_sha256", None)
@@ -175,7 +175,7 @@ def package(args: argparse.Namespace) -> pathlib.Path:
 
     onnx_out, deviations = export_onnx(
         str(config_out),
-        str(out / f"{args.name}.onnx"),
+        str(out / f"{out.name}.onnx"),
         checkpoint_path=str(weights_out),
         with_quantiles=True,
         verify=not args.no_verify,
@@ -204,7 +204,9 @@ def package(args: argparse.Namespace) -> pathlib.Path:
         "onnx": {"file": onnx_out.name, "max_abs_deviation_from_pytorch": deviations},
         "files": {p.name: {"sha256": sha256_file(p), "bytes": p.stat().st_size} for p in sorted(assets)},
     }
-    (out / MANIFEST_FILENAME).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    with (out / MANIFEST_FILENAME).open("w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=2)
+        handle.write("\n")
     write_checksums([*assets, out / MANIFEST_FILENAME], out / CHECKSUMS_FILENAME)
     return out
 
