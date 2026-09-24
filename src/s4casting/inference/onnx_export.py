@@ -13,7 +13,6 @@ exported (and the whole pipeline validated) with randomly initialised weights be
 a checkpoint exists. Supplying a checkpoint later changes parameter values only.
 """
 
-import io
 import json
 import math
 import pathlib
@@ -27,7 +26,7 @@ from torch import nn
 
 from s4casting import factories as fc
 from s4casting.core.config import Configuration, IOConfiguration, MachineConfiguration, ModelConfiguration
-from s4casting.data.files.loader import FileAccess
+from s4casting.inference.weights import read_weights
 
 DEFAULT_OPSET = 18
 MINUTES_PER_DAY = 24 * 60
@@ -329,7 +328,8 @@ def load_checkpoint_weights(model: nn.Module, checkpoint_path: str, device: str 
 
     Args:
         model (nn.Module): Model to load the weights into.
-        checkpoint_path (str): Path to the checkpoint written by the Checkpointer.
+        checkpoint_path (str): A checkpoint written by the Checkpointer, or a released
+            ``.safetensors`` weights file.
         device (str): Device to map the tensors onto.
 
     Raises:
@@ -342,17 +342,10 @@ def load_checkpoint_weights(model: nn.Module, checkpoint_path: str, device: str 
     if not is_remote and not pathlib.Path(checkpoint_path).is_file():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    checkpoint = FileAccess(checkpoint_path).load_pydantic()
-    # weights_only restricts unpickling to tensors and primitive containers.
-    state_dict = torch.load(io.BytesIO(checkpoint["torch_model"]), map_location=device, weights_only=True)
-    state_dict = {key.removeprefix("module."): value for key, value in state_dict.items()}
-    model.load_state_dict(state_dict)
-
-    return {
-        "s4casting.checkpoint": checkpoint_path,
-        "s4casting.checkpoint_iteration": str(checkpoint["iteration"]),
-        "s4casting.checkpoint_loss": str(checkpoint["loss"]),
-    }
+    # Either a training checkpoint container or a released .safetensors file.
+    state_dict, metadata = read_weights(checkpoint_path)
+    model.load_state_dict({key: value.to(device) for key, value in state_dict.items()})
+    return metadata
 
 
 def build_model(config: Configuration, checkpoint_path: str | None = None) -> nn.Module:

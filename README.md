@@ -23,16 +23,6 @@ The repo contains:
 You can install the repo following the installation guide:
 - [Installation](docs/INSTALLATION.md)
 
-To test MLflow tracking locally, start a SQL-backed workspace-enabled server:
-
-```bash
-uv run mlflow server --enable-workspaces
-```
-
-Note that MLflow Image Grid does not currently display images logged from
-non-default workspaces; see [Usage](docs/USAGE.md) for details on configuring
-MLflow tracking.
-
 ## Documentation
 
 You can find detailed documentation for each component in the following links:
@@ -42,6 +32,7 @@ You can find detailed documentation for each component in the following links:
 - [Model settings](docs/CONFIGURATION.md)
 - [Evaluation](docs/EVALUATION.md)
 - [ONNX export](docs/ONNX_EXPORT.md)
+- [Weights release](docs/WEIGHTS_RELEASE.md)
 - [Repository](docs/REPOSITORY.md)
 - [Contributing](docs/CONTRIBUTING.md)
 

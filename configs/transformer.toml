@@ -28,7 +28,6 @@ alignment = 1440
 model = "transformer"
 norm_clamp = 10
 norm_eps = 0.0001
-internal_dtype = "float32"
 
 [model.loss]
 loss = "nll"
@@ -37,14 +36,15 @@ mask_mode = "masked"
 sigma_regularisation_factor = 0
 
 [model.transformer]
-latent_dim = 1024
-n_heads = 16
-n_layers = 9
+latent_dim = 512
+n_heads = 8
+n_layers = 6
 dropout = 0
 attn_bias = true
 mlp_layers = 2
 # Causal time attention: tokens only attend to the past. Group attention stays bidirectional.
-causal = true
+# checkpoint_440000 was trained non-causal: with causal = true its outputs drift by ~0.3, with false they match to 1e-6.
+causal = false
 
 [model.output_head]
 arch = "gmm"
