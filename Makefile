@@ -1,4 +1,4 @@
-.PHONY: install lint check test lock-local lock-reset
+.PHONY: install lint check test lock-local lock-reset lock-check
 
 help:	   ## Show this help.
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
@@ -25,6 +25,10 @@ lock-local: ## Build a local-only lockfile via your default package index (hidde
 lock-reset: ## Undo lock-local; run before pull/checkout when uv.lock changed upstream
 	git update-index --no-skip-worktree uv.lock
 	git checkout -- uv.lock
+
+lock-check: ## Verify uv.lock matches pyproject.toml exactly as CI does; run before committing dependency changes
+	@# Public index, no network, no writes: passes only if the committed lock resolves pyproject as-is.
+	UV_DEFAULT_INDEX=https://pypi.org/simple uv lock --check --offline
 
 license:
 	find . -type f -name '*.py' \

@@ -26,6 +26,7 @@ from s4casting.inference.weights import (
     write_checksums,
 )
 from scripts.package_weights import main as package_main
+from scripts.package_weights import release_folder
 from tests.utils import load_config
 
 
@@ -45,7 +46,7 @@ def _without_none(value):
     return value
 
 
-@pytest.fixture()
+@pytest.fixture
 def small_config() -> Configuration:
     """Build a small transformer configuration that converts and exports quickly.
 
@@ -61,7 +62,7 @@ def small_config() -> Configuration:
     return cfg
 
 
-@pytest.fixture()
+@pytest.fixture
 def checkpoint(small_config: Configuration, tmp_path: pathlib.Path) -> tuple[pathlib.Path, dict[str, torch.Tensor]]:
     """Write a training checkpoint container for a randomly initialised small model.
 
@@ -214,3 +215,11 @@ def test_conversion_is_byte_reproducible(checkpoint, tmp_path: pathlib.Path) -> 
     checkpoint_to_safetensors(str(path), tmp_path / "one.safetensors", provenance)
     checkpoint_to_safetensors(str(path), tmp_path / "two.safetensors", provenance)
     assert sha256_file(tmp_path / "one.safetensors") == sha256_file(tmp_path / "two.safetensors")
+
+
+@pytest.mark.parametrize("name", ["../escape", "a/b", "", "..", "sp ace"])
+def test_release_name_cannot_escape_the_output_directory(name: str, tmp_path: pathlib.Path) -> None:
+    """Release names are plain identifiers, so a CLI argument cannot write outside --out-dir."""
+    with pytest.raises(SystemExit):
+        release_folder(str(tmp_path), name)
+    assert not any(tmp_path.parent.glob("escape"))

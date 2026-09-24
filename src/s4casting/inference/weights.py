@@ -23,6 +23,7 @@ from s4casting.data.files.loader import FileAccess
 
 SAFETENSORS_SUFFIX = ".safetensors"
 CHECKSUMS_FILENAME = "checksums.sha256"
+MANIFEST_FILENAME = "manifest.json"
 MODULE_PREFIX = "module."
 # All provenance goes under one header key as canonical JSON. safetensors serialises the
 # metadata through a hash map whose key order changes per process, so several keys would

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from s4casting.core.context import Context
 from s4casting.core.hooks import CommonHooks, TrainingHooks
 from s4casting.data.files.loader import FileAccess
-from s4casting.inference.weights import SAFETENSORS_SUFFIX, read_safetensors
+from s4casting.inference.weights import MODULE_PREFIX, SAFETENSORS_SUFFIX, read_safetensors
 
 
 class SavedCheckpoint(BaseModel):
@@ -112,10 +112,10 @@ class Checkpointer:
             dict[str, torch.Tensor]: Weights under keys the current model accepts.
         """
         first_key = next(iter(state_dict.keys()))
-        if not bool(context.machine.ddp) and first_key.startswith("module."):
-            return {key.removeprefix("module."): value for key, value in state_dict.items()}
-        if bool(context.machine.ddp) and not first_key.startswith("module."):
-            return {"module." + key: value for key, value in state_dict.items()}
+        if not bool(context.machine.ddp) and first_key.startswith(MODULE_PREFIX):
+            return {key.removeprefix(MODULE_PREFIX): value for key, value in state_dict.items()}
+        if bool(context.machine.ddp) and not first_key.startswith(MODULE_PREFIX):
+            return {MODULE_PREFIX + key: value for key, value in state_dict.items()}
         return state_dict
 
     def save(self, context: Context, iteration: int | None) -> None:

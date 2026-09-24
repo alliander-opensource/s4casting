@@ -23,6 +23,7 @@ import datetime
 import importlib.metadata
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,7 @@ import warnings
 from s4casting.inference.onnx_export import export_onnx
 from s4casting.inference.weights import (
     CHECKSUMS_FILENAME,
+    MANIFEST_FILENAME,
     SAFETENSORS_SUFFIX,
     checkpoint_to_safetensors,
     read_safetensors,
@@ -40,6 +42,33 @@ from s4casting.inference.weights import (
 )
 
 warnings.filterwarnings("ignore")
+
+# A release name becomes a directory and file names: letters, digits, dot, dash and
+# underscore only, so a CLI argument can never point outside the output directory.
+RELEASE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
+def release_folder(out_dir: str, name: str) -> pathlib.Path:
+    """Resolve the folder a release is written to, rejecting names that could escape it.
+
+    Args:
+        out_dir (str): Parent directory for releases.
+        name (str): Release name from the command line.
+
+    Raises:
+        SystemExit: If the name is not a plain identifier or resolves outside ``out_dir``.
+
+    Returns:
+        pathlib.Path: ``<out_dir>/<name>``, created.
+    """
+    if not RELEASE_NAME.fullmatch(name) or name in {".", ".."}:
+        raise SystemExit(f"Release name {name!r} must contain only letters, digits, '.', '-' or '_'.")
+    parent = pathlib.Path(out_dir).resolve()
+    folder = (parent / name).resolve()
+    if folder.parent != parent:
+        raise SystemExit(f"Release name {name!r} resolves outside {parent}.")
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -117,8 +146,7 @@ def package(args: argparse.Namespace) -> pathlib.Path:
     Returns:
         pathlib.Path: The release folder.
     """
-    out = pathlib.Path(args.out_dir) / args.name
-    out.mkdir(parents=True, exist_ok=True)
+    out = release_folder(args.out_dir, args.name)
     provenance = code_provenance(args)
 
     config_src = pathlib.Path(args.config_path)
@@ -150,7 +178,7 @@ def package(args: argparse.Namespace) -> pathlib.Path:
     if pathlib.Path(args.license_file).is_file():
         shutil.copyfile(args.license_file, out / "LICENSE")
 
-    assets = [p for p in out.iterdir() if p.is_file() and p.name not in {CHECKSUMS_FILENAME, "manifest.json"}]
+    assets = [p for p in out.iterdir() if p.is_file() and p.name not in {CHECKSUMS_FILENAME, MANIFEST_FILENAME}]
     manifest = {
         "name": args.name,
         "created_utc": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
@@ -167,8 +195,8 @@ def package(args: argparse.Namespace) -> pathlib.Path:
         "onnx": {"file": onnx_out.name, "max_abs_deviation_from_pytorch": deviations},
         "files": {p.name: {"sha256": sha256_file(p), "bytes": p.stat().st_size} for p in sorted(assets)},
     }
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    write_checksums([*assets, out / "manifest.json"], out / CHECKSUMS_FILENAME)
+    (out / MANIFEST_FILENAME).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    write_checksums([*assets, out / MANIFEST_FILENAME], out / CHECKSUMS_FILENAME)
     return out
 
 
@@ -202,7 +230,7 @@ def main(argv=None) -> pathlib.Path:
     """
     args = parse_args(argv)
     folder = package(args)
-    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((folder / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     print(f"Packaged {args.name} from code {manifest['code']['tag']} ({manifest['code']['commit'][:12]}) into {folder}")  # noqa: T201
     for name, entry in manifest["files"].items():
         print(f"  {entry['sha256']}  {name}  ({entry['bytes'] / 1e6:.1f} MB)")  # noqa: T201
