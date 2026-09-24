@@ -22,6 +22,7 @@ import argparse
 import datetime
 import importlib.metadata
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -49,26 +50,32 @@ RELEASE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 
 def release_folder(out_dir: str, name: str) -> pathlib.Path:
-    """Resolve the folder a release is written to, rejecting names that could escape it.
+    """Resolve the folder a release is written to, keeping it inside the working directory.
+
+    Both arguments come from the command line. The name must be a plain identifier, and
+    the output directory is resolved against the current working directory and rejected
+    if it escapes it, so no argument can direct writes elsewhere on the filesystem.
 
     Args:
-        out_dir (str): Parent directory for releases.
+        out_dir (str): Parent directory for releases, inside the current working directory.
         name (str): Release name from the command line.
 
     Raises:
-        SystemExit: If the name is not a plain identifier or resolves outside ``out_dir``.
+        SystemExit: If the name is not a plain identifier or the folder leaves the
+            working directory.
 
     Returns:
         pathlib.Path: ``<out_dir>/<name>``, created.
     """
     if not RELEASE_NAME.fullmatch(name) or name in {".", ".."}:
         raise SystemExit(f"Release name {name!r} must contain only letters, digits, '.', '-' or '_'.")
-    parent = pathlib.Path(out_dir).resolve()
-    folder = (parent / name).resolve()
-    if folder.parent != parent:
-        raise SystemExit(f"Release name {name!r} resolves outside {parent}.")
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder
+    base = os.path.realpath(os.getcwd())
+    folder = os.path.realpath(os.path.join(base, out_dir, name))
+    if not folder.startswith(base + os.sep):
+        raise SystemExit(f"--out-dir must stay inside the working directory {base}, got {out_dir!r}.")
+    path = pathlib.Path(folder)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -84,7 +91,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--config-path", required=True, help="Exact training configuration TOML of the model.")
     ap.add_argument("--checkpoint", required=True, help="Training checkpoint (.pt) or existing .safetensors file.")
     ap.add_argument("--name", required=True, help="Release name, used for the asset file names.")
-    ap.add_argument("--out-dir", default="out/weights", help="Directory that receives <out-dir>/<name>/.")
+    ap.add_argument(
+        "--out-dir",
+        default="out/weights",
+        help="Directory that receives <out-dir>/<name>/; must lie inside the current working directory.",
+    )
     ap.add_argument("--model-card", help="MODEL_CARD.md to include; uploaded unchanged as README.md.")
     ap.add_argument("--license-file", default="LICENSE", help="Licence text shipped with the weights.")
     ap.add_argument("--code-tag", help="Code tag the release is built from; defaults to the tag at HEAD.")

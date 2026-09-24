@@ -137,11 +137,14 @@ def test_checksums_detect_tampering(tmp_path: pathlib.Path) -> None:
 
 
 def test_package_builds_a_complete_verifiable_release(
-    small_config: Configuration, checkpoint, tmp_path: pathlib.Path
+    small_config: Configuration, checkpoint, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The packaging script produces every release asset, all covered by matching checksums."""
     pytest.importorskip("onnx")
     pytest.importorskip("onnxruntime")
+    license_file = pathlib.Path("LICENSE").resolve()
+    # Releases are only ever written inside the working directory.
+    monkeypatch.chdir(tmp_path)
 
     path, _ = checkpoint
     config_path = tmp_path / "config.toml"
@@ -157,13 +160,15 @@ def test_package_builds_a_complete_verifiable_release(
         "--name",
         "tiny",
         "--out-dir",
-        str(tmp_path / "release"),
+        "release",
         "--model-card",
         str(card),
         "--code-tag",
         "v0.0.0-test",
         "--allow-dirty",
         "--no-verify",
+        "--license-file",
+        str(license_file),
     ])
 
     names = {p.name for p in folder.iterdir()}
@@ -218,8 +223,22 @@ def test_conversion_is_byte_reproducible(checkpoint, tmp_path: pathlib.Path) -> 
 
 
 @pytest.mark.parametrize("name", ["../escape", "a/b", "", "..", "sp ace"])
-def test_release_name_cannot_escape_the_output_directory(name: str, tmp_path: pathlib.Path) -> None:
+def test_release_name_cannot_escape_the_output_directory(
+    name: str, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Release names are plain identifiers, so a CLI argument cannot write outside --out-dir."""
+    monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit):
-        release_folder(str(tmp_path), name)
+        release_folder("releases", name)
     assert not any(tmp_path.parent.glob("escape"))
+
+
+@pytest.mark.parametrize("out_dir", ["..", "../elsewhere", "/"])
+def test_out_dir_cannot_leave_the_working_directory(
+    out_dir: str, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The output directory is anchored to the working directory, wherever the argument points."""
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        release_folder(out_dir, "model")
+    assert not (tmp_path.parent / "model").exists()

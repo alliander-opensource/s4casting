@@ -56,8 +56,9 @@ tagged commit of the code.
        --out-dir out/weights
    ```
 
-   This writes `out/weights/transformer-lianderpower-v1/` with every file listed above
-   and prints their checksums. The ONNX export is verified against PyTorch as part of
+   Run this from the repository root: the output directory must lie inside the working
+   directory. This writes `out/weights/transformer-lianderpower-v1/` with every file
+   listed above and prints their checksums. The ONNX export is verified against PyTorch as part of
    this step; a deviation above 1e-4 aborts the packaging.
 
 4. Upload. Either add `--push <org>/<name>` to the command above, with a Hub token in the
