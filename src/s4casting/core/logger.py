@@ -576,7 +576,8 @@ class MLflowLogger(LoggerInterface):
         if config.workspace != "default":
             logging.warning(
                 "Using a non-default MLflow workspace (%s) may cause images in the img_grid UI panel to not be shown. "
-                "See https://github.com/mlflow/mlflow/issues/22794"
+                "See https://github.com/mlflow/mlflow/issues/22794",
+                config.workspace,
             )
         try:
             try:

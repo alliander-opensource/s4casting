@@ -281,7 +281,8 @@ class MLP(nn.Module):
     ):
         """Initialize MLP layers."""
         super().__init__()
-        hidden_dim = embed_dim * 4  # transformer convention
+        if hidden_dim is None:
+            hidden_dim = embed_dim * 4  # transformer convention
         self.first_layer = nn.Linear(embed_dim, hidden_dim, bias=bias)
         self.mid_layers = nn.Sequential(*[
             nn.Sequential(

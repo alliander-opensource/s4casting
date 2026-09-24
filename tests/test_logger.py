@@ -196,17 +196,15 @@ def test_mlflow_preflight_creates_missing_workspace():
     )
 
 
-def test_mlflow_preflight_propagates_workspace_errors():
+def test_mlflow_preflight_propagates_workspace_errors(monkeypatch: pytest.MonkeyPatch):
     """Unexpected MLflow workspace errors retain their original details."""
     client = Mock()
     error = MlflowException("workspace endpoint unavailable")
     client.get_workspace.side_effect = error
+    monkeypatch.setattr("s4casting.core.logger.MlflowClient", Mock(return_value=client))
+    monkeypatch.setattr("s4casting.core.logger.mlflow.set_tracking_uri", Mock())
 
-    with (
-        patch("s4casting.core.logger.MlflowClient", return_value=client),
-        patch("s4casting.core.logger.mlflow.set_tracking_uri"),
-        pytest.raises(MlflowException, match="workspace endpoint unavailable") as raised,
-    ):
+    with pytest.raises(MlflowException, match="workspace endpoint unavailable") as raised:
         MLflowLogger.preflight(MLflowLoggingConfiguration())
 
     assert raised.value is error
