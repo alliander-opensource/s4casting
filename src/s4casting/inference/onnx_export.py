@@ -308,15 +308,25 @@ def sequence_length(model_config: ModelConfiguration) -> int:
 
 
 def horizon_length(model_config: ModelConfiguration) -> int:
-    """Compute the number of forecast time steps.
+    """Compute the number of forecast time steps of the example inputs.
+
+    ``predict_width`` is either a horizon in days or, for models trained under the
+    ``randomprediction`` and ``cpm`` tasks, a ``(min, max)`` fraction range of the sample
+    length. The exported graph takes the horizon from the input mask at inference time, so
+    for a range only an example is needed: the upper bound applied to the example sequence,
+    which is the longest horizon the model was trained to produce.
 
     Args:
         model_config (ModelConfiguration): Model configuration.
 
     Returns:
-        int: Number of forecast time steps.
+        int: Number of forecast time steps, at least 1.
     """
-    return int(model_config.predict_width * MINUTES_PER_DAY / model_config.base_sample_interval_minutes)
+    predict_width = model_config.predict_width
+    if isinstance(predict_width, tuple):
+        _, max_fraction = predict_width
+        return max(1, int(sequence_length(model_config) * max_fraction))
+    return int(predict_width * MINUTES_PER_DAY / model_config.base_sample_interval_minutes)
 
 
 def load_checkpoint_weights(model: nn.Module, checkpoint_path: str, device: str = "cpu") -> dict[str, str]:
