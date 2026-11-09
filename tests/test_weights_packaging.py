@@ -177,11 +177,11 @@ def test_package_builds_a_complete_verifiable_release(
         "tiny.safetensors",
         "tiny.onnx",
         "training_config.toml",
-        "MODEL_CARD.md",
         "README.md",
         "manifest.json",
         "checksums.sha256",
     } <= names
+    assert "MODEL_CARD.md" not in names
     assert all(verify_checksums(folder / "checksums.sha256").values())
     manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["code"]["tag"] == "v0.0.0-test"

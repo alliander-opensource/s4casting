@@ -8,7 +8,7 @@ Turns a training checkpoint into the complete, verifiable asset set of a weights
 - ``<name>.safetensors``   model weights only, no optimizer state, no pickle
 - ``<name>.onnx``          exported from that safetensors file, verified against PyTorch
 - ``training_config.toml`` the exact configuration the model was trained with
-- ``MODEL_CARD.md`` and ``README.md``  the model card, the latter for the Hugging Face Hub
+- ``README.md``            the model card, published unchanged from ``model_cards/<name>/MODEL_CARD.md``
 - ``LICENSE``              the licence the weights are released under (MPL-2.0)
 - ``manifest.json``        the code tag and commit, hashes and training provenance
 - ``checksums.sha256``     SHA-256 of every file above, for ``shasum -a 256 -c``
@@ -182,7 +182,8 @@ def package(args: argparse.Namespace) -> pathlib.Path:
     )
 
     if args.model_card:
-        shutil.copyfile(args.model_card, out / "MODEL_CARD.md")
+        # A model repository's README.md is the model card; shipping a second copy under
+        # another name would only invite drift. MODEL_CARD.md stays canonical in this repo.
         shutil.copyfile(args.model_card, out / "README.md")
     if pathlib.Path(args.license_file).is_file():
         shutil.copyfile(args.license_file, out / "LICENSE")

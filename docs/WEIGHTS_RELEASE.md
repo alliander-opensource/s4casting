@@ -18,7 +18,7 @@ tagged commit of the code.
 | `<name>.safetensors` | Model weights only. No optimizer state, no pickle: safetensors cannot execute code on load. The header records the code tag, commit, checkpoint iteration and loss, and the SHA-256 of the training configuration. |
 | `<name>.onnx` | Exported from that safetensors file by the released code, with a second `quantiles` output, and verified against PyTorch before packaging. |
 | `training_config.toml` | The exact configuration the model was trained with, validated against the code release. |
-| `MODEL_CARD.md`, `README.md` | The model card. Identical files; the Hub renders `README.md`. |
+| `README.md` | The model card, published unchanged from `model_cards/<name>/MODEL_CARD.md`. A model repository's `README.md` is its model card, so only that copy ships. |
 | `LICENSE` | The licence the weights are released under: MPL-2.0, the same as the code. |
 | `manifest.json` | Name, code tag and commit, s4casting version, checkpoint provenance, ONNX deviation from PyTorch, and the SHA-256 and size of every file. |
 | `checksums.sha256` | SHA-256 of every file above, in `sha256sum` format. |
@@ -29,18 +29,21 @@ tagged commit of the code.
   upload is a Hub commit, so a release is pinned by its revision hash.
 - **This repository**: `model_cards/<name>/MODEL_CARD.md` and
   `model_cards/<name>/training_config.toml`. The card is edited and reviewed here only,
-  never on the Hub, and uploaded unchanged.
+  never on the Hub, and uploaded unchanged. New cards start from
+  `model_cards/_template/`, which holds the section structure and the metadata header
+  with placeholders.
 - **A git tag on the code**: every weights release records the tag and commit it was
   packaged from. The tag is what a user checks out to load the weights with the code that
   produced them.
 
 ## Publishing a release
 
-1. Merge the model card and training configuration under `model_cards/<name>/`.
+1. Copy `model_cards/_template/` to `model_cards/<name>/`, fill in the card and add
+   the exact training configuration as `training_config.toml`, then merge them.
 2. Tag the commit the weights are released against, for example:
 
    ```bash
-   git tag -a v0.1.0 -m "Code release paired with transformer-lianderpower-v1"
+   git tag -a v0.1.0 -m "Code release paired with <name>"
    git push origin v0.1.0
    ```
 
@@ -49,15 +52,15 @@ tagged commit of the code.
 
    ```bash
    uv run python scripts/package_weights.py \
-       --config-path model_cards/transformer-lianderpower-v1/training_config.toml \
-       --checkpoint out/checkpoint_440000.pt \
-       --name transformer-lianderpower-v1 \
-       --model-card model_cards/transformer-lianderpower-v1/MODEL_CARD.md \
+       --config-path model_cards/<name>/training_config.toml \
+       --checkpoint out/checkpoint_<iteration>.pt \
+       --name <name> \
+       --model-card model_cards/<name>/MODEL_CARD.md \
        --out-dir out/weights
    ```
 
    Run this from the repository root: the output directory must lie inside the working
-   directory. This writes `out/weights/transformer-lianderpower-v1/` with every file
+   directory. This writes `out/weights/<name>/` with every file
    listed above and prints their checksums. The ONNX export is verified against PyTorch as part of
    this step; a deviation above 1e-4 aborts the packaging.
 
@@ -90,7 +93,7 @@ from s4casting.inference.onnx_export import build_model, load_configuration, loa
 
 config = load_configuration("training_config.toml")
 model = build_model(config)
-metadata = load_checkpoint_weights(model, "transformer-lianderpower-v1.safetensors", device="cpu")
+metadata = load_checkpoint_weights(model, "<name>.safetensors", device="cpu")
 ```
 
 `metadata` carries the provenance from the safetensors header, including the SHA-256 of
@@ -106,7 +109,7 @@ file and train as usual:
 
 ```toml
 [io]
-load_checkpoint = "transformer-lianderpower-v1.safetensors"
+load_checkpoint = "<name>.safetensors"
 ```
 
 The checkpointer loads the weights into the model and leaves the optimizer, scheduler and
