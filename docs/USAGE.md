@@ -51,6 +51,15 @@ export S4_logging__wandb__project="main_project"
 uv run torchrun --standalone scripts/train.py configs/cpu.toml
 ```
 
+#### fev-bench
+```bash
+# Score a checkpoint on the configured fev-bench tasks (energy subset by default)
+uv run python scripts/run_fevbench.py configs/transformer.toml --checkpoint out/checkpoint_10000.pt
+
+# A quick look at two tasks with a single rolling window (no leaderboard)
+uv run python scripts/run_fevbench.py configs/transformer.toml --checkpoint out/checkpoint_10000.pt --tasks epf_be ercot_1D --num-windows 1
+```
+
 #### Creating datasets in our format
 The process of creating datasets in our format is handled by the `scripts/format_dataset.py` script. The process is fully described in `notebooks/00_data_preparation.ipynb`. The data used in the following examples are created by running a test once. Important to note is that all our data is measured for the UTC timezone.
 

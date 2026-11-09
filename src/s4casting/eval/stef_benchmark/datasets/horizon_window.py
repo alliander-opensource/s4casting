@@ -33,6 +33,7 @@ class HorizonWindowDataset(Dataset):
         self.horizons = horizons
         self.cfg = cfg.benchmarking.benchmarks["StefBeamBenchmark"]
         self.feature_order = cfg.io.feature_order
+        self.n_time_features = cfg.io.input_feature_counts()[1]
         self.device = device
         self.target = target
         self.n_predict = (
@@ -89,21 +90,19 @@ class HorizonWindowDataset(Dataset):
                 axis=-1,
             ).astype("float32", copy=False)
 
-        # add time features
+        # add the time channels: unix seconds, plus the target's latitude/longitude when the model was
+        # trained with location (time loader n_features = 3)
         if "time" in self.feature_order:
-            if self.target is None:
-                raise ValueError("StefBeam time encoding requires a BenchmarkTarget with latitude/longitude.")
-
             unix_seconds = w.index.as_unit("s").astype("int64").to_numpy(dtype=np.float32)
-            time_features = np.stack(
-                [
-                    unix_seconds,
+            columns = [unix_seconds]
+            if self.n_time_features == 3:
+                if self.target is None:
+                    raise ValueError("StefBeam location encoding requires a BenchmarkTarget with latitude/longitude.")
+                columns += [
                     np.full(len(w), self.target.latitude, dtype=np.float32),
                     np.full(len(w), self.target.longitude, dtype=np.float32),
-                ],
-                axis=-1,
-            )
-            inp = np.concatenate([inp, time_features], axis=-1).astype("float32", copy=False)
+                ]
+            inp = np.concatenate([inp, np.stack(columns, axis=-1)], axis=-1).astype("float32", copy=False)
 
         X = torch.from_numpy(inp)
         xm = torch.ones_like(X)

@@ -251,26 +251,34 @@ class TimeseriesDataset:
 
 @dataclass
 class TimeData:
-    """Provides features that encode location on interval line in terms of (time, lon, lat)."""
+    """Provides the metadata channels of every sample on the interval line.
+
+    With ``n_features = 1`` the single channel is the unix time; with ``n_features = 3`` the location's
+    latitude and longitude follow it. Time-only is the default: models trained without location transfer
+    to series that carry no coordinates (external and benchmark data).
+    """
 
     sample_interval: int
     locations: dict
+    n_features: int = 1
 
     def read(self, start: int, end: int) -> np.ndarray:
-        """Read time and location data between start and end times.
+        """Read the time (and location) channels of every sample between start and end.
 
         Args:
             start (int): Start time.
             end (int): End time.
 
         Returns:
-            np.ndarray: T x 3 = (end-start-1)//self.sample_interval+1 x 3 with (time, lat, lon).
+            np.ndarray: T x n_features = (end-start-1)//self.sample_interval+1 x n_features with the unix
+                time in seconds and, for three features, the latitude and longitude of the location.
         """
         n = (end - start - 1) // self.sample_interval + 1
+        times = (np.arange(n, dtype=np.float32) * self.sample_interval + just_time(start))[:, None]
+        if self.n_features == 1:
+            return times
         loc_meta = self.locations[just_location(start)]
-        times = np.arange(n, dtype=np.float32) * self.sample_interval + just_time(start)
-        times = times[:, None]  # shape (n, 1)
-        coords = np.tile([loc_meta["lat"], loc_meta["lon"]], (n, 1))
+        coords = np.tile([loc_meta["lat"], loc_meta["lon"]], (n, 1)).astype(np.float32)
         return np.concatenate((times, coords), axis=-1)
 
 
@@ -320,7 +328,9 @@ def initialize_per_source_datasets(
         cfg = config.features[name]
 
         if cfg.loader == "time":
-            dataset_per_source[name][name] = TimeData(model_config.base_sample_interval_minutes * 60, all_locations)
+            dataset_per_source[name][name] = TimeData(
+                model_config.base_sample_interval_minutes * 60, all_locations, n_features=cfg.n_features
+            )
             continue
 
         if cfg.loader == "sideload":

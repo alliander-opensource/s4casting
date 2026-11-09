@@ -207,15 +207,25 @@ def intersect_points(x, A):
 def intersect_single(A, s, e):
     """Intersect intervals with a single interval.
 
+    Binary-searches the candidate slice instead of clipping the whole array: this runs once per
+    source per drawn sample, and A holds every interval of every location, so an O(n) clip here
+    dominated the data loader. Requires the `clean` guarantees (sorted by start, disjoint): only
+    intervals starting before `e` can intersect, and of those starting at or before `s` only the
+    last one can reach `s`, because everything before it ends at or before its start.
+
     Args:
-        A (np.ndarray): Array of intervals of shape (n, 2).
+        A (np.ndarray): Array of intervals of shape (n, 2), sorted by start and disjoint.
         s (int): Start of the interval.
         e (int): End of the interval.
 
     Returns:
         np.ndarray: Intersected intervals.
     """
-    A = np.clip(A, s, e)
+    if len(A) == 0:
+        return A
+    hi = np.searchsorted(A[:, 0], e, side="left")
+    lo = max(0, np.searchsorted(A[:, 0], s, side="right") - 1)
+    A = np.clip(A[lo:hi], s, e)
     return A[distances(A) > 0]
 
 

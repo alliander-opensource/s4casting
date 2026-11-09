@@ -44,7 +44,7 @@ class S4ModelInterface(BacktestForecasterMixin, BacktestBatchForecasterMixin):
         self._quantiles = [Quantile(q) for q in context.configuration.benchmarking.eval_quantiles]
         self._config = BacktestForecasterConfig(
             requires_training=False,
-            batch_size=context.configuration.training.batch_size,  # type: ignore[call-arg]
+            batch_size=context.configuration.benchmarking.batch_size,  # type: ignore[call-arg]
             predict_sample_interval=timedelta(
                 minutes=context.configuration.benchmarking.benchmarks["StefBeamBenchmark"].input_sample_interval_minutes  # type: ignore[possibly-missing-attribute]
             ),
@@ -81,7 +81,7 @@ class S4ModelInterface(BacktestForecasterMixin, BacktestBatchForecasterMixin):
     @property
     def batch_size(self) -> int | None:
         """Batch size for prediction. None means process all at once."""
-        return self.context.configuration.training.batch_size
+        return self.context.configuration.benchmarking.batch_size
 
     @torch.no_grad()
     def predict_batch(self, batch: list[RestrictedHorizonVersionedTimeSeries]):
@@ -101,7 +101,7 @@ class S4ModelInterface(BacktestForecasterMixin, BacktestBatchForecasterMixin):
         )
         loader = DataLoader(
             ds,
-            batch_size=self.context.configuration.training.batch_size,
+            batch_size=self.context.configuration.benchmarking.batch_size,
             shuffle=False,
             pin_memory=False,
             collate_fn=lambda b: b,

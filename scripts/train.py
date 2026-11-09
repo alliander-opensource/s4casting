@@ -89,7 +89,7 @@ def train(config: Configuration):
         batcher=batcher,
     )
 
-    with machine.context(config.model.internal_dtype):
+    with machine.context():
         trainer.train(ctx)
 
 

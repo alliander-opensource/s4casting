@@ -62,24 +62,39 @@ def get_datetime_from_convention(timestamp: int) -> datetime:
     return datetime(1970, 1, 1, tzinfo=UTC) + timedelta(minutes=timestamp)
 
 
-def resample_batch(batch, t):
-    """Resample a batch of sequences to a new length using linear interpolation.
+def resample_batch(batch, t, min_coverage=0.5):
+    """Resample a batch of sequences to a new length: period means down, linear interpolation up.
+
+    Downsampling (``t`` below the sequence length) averages every output period over the input samples it
+    covers, ignoring NaNs; a period with fewer than ``min_coverage`` of its samples valid is NaN. That is what
+    meters and system operators report at coarser rates (a 15-minute value is the mean of three 5-minute
+    readings, a daily value the mean of the day). Point sampling the series instead, as interpolation does,
+    turns a daily or weekly series into draws from the daily cycle. Non-integer ratios (10-minute data at
+    15 minutes) average over the overlapping samples. Upsampling (``t`` above the sequence length) linearly
+    interpolates between the known samples, which is right for smooth covariates such as hourly weather.
 
     Args:
         batch (np.ndarray): Input batch of shape (batch_size, seq_len, n_features).
         t (int): Target sequence length.
+        min_coverage (float): Fraction of valid input samples a downsampled period needs to be non-NaN.
 
     Returns:
         np.ndarray: Resampled batch of shape (batch_size, t, n_features).
     """
-    if t == len(batch):
+    n = batch.shape[1]
+    if t == n:
         return batch
+    x = torch.as_tensor(batch).permute(0, 2, 1)  # (B, F, T)
+    if t < n:
+        valid = torch.isfinite(x)
+        values = torch.where(valid, x, torch.zeros_like(x)).double()
+        coverage = torch.nn.functional.adaptive_avg_pool1d(valid.double(), t)
+        total = torch.nn.functional.adaptive_avg_pool1d(values, t)
+        mean = total / coverage.clamp_min(1e-12)
+        out = torch.where(coverage >= min_coverage, mean, torch.full_like(mean, float("nan")))
+        return out.permute(0, 2, 1).to(x.dtype).numpy()
     return (
-        torch.nn.functional
-        .interpolate(torch.tensor(batch, device="cpu").permute(0, 2, 1), size=t, mode="linear", align_corners=True)
-        .permute(0, 2, 1)
-        .cpu()
-        .numpy()
+        torch.nn.functional.interpolate(x.to("cpu"), size=t, mode="linear", align_corners=True).permute(0, 2, 1).numpy()
     )
 
 
@@ -103,6 +118,6 @@ def get_ordered_feature_names(configuration: "Configuration") -> list[str]:
             ordered_feature_names.extend(ds.subset_features)
         # Provide sensible defaults for known loaders
         elif ds.loader == "time":
-            ordered_feature_names.extend(["unixtime", "latitude", "longitude"])
+            ordered_feature_names.extend(["unixtime", "latitude", "longitude"][: ds.n_features])
 
     return ordered_feature_names

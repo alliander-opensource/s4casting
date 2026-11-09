@@ -76,6 +76,7 @@ class TrainingHooks(CommonHooks):
         self.checkpoint: Hook[Callable[[Context, int], None]] = Hook("checkpoint")
         self.benchmark: Hook[Callable[[Context, int], None]] = Hook("benchmark")
         self.stef_beam: Hook[Callable[[Context, int], None]] = Hook("stef_beam")
+        self.fev_bench: Hook[Callable[[Context, int], None]] = Hook("fev_bench")
         self.benchmark_metrics: Hook[Callable[[Context, int], None]] = Hook("benchmark_metrics")
         self.eval_plot: Hook[Callable[[Context, Figure], None]] = Hook("eval_plot")
         self.benchmark_plot: Hook[Callable[[Context, Figure, str], None]] = Hook("benchmark_plot")

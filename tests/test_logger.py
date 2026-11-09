@@ -259,6 +259,25 @@ def test_mlflow_adapter_passes_metric_values_to_sdk_unchanged():
     assert log_metrics.call_args.kwargs == {"step": 7, "synchronous": True}
 
 
+def test_mlflow_quiets_repetitive_warnings():
+    """The GPU power and request header warnings are raised to ERROR so they do not flood the log."""
+    MLflowLogger.quiet_noisy_loggers()
+    for name in MLflowLogger._NOISY_LOGGERS:
+        assert not logging.getLogger(name).isEnabledFor(logging.WARNING)
+
+
+def test_mlflow_adapter_drops_none_metrics():
+    """A metric that does not apply to the sample (``None``) is skipped instead of aborting the run."""
+    logger = object.__new__(MLflowLogger)
+    logger.run_id = "run-id"
+    logger.metric_names = {}
+
+    with patch("s4casting.core.logger.mlflow.log_metrics") as log_metrics:
+        logger._log_metrics({"Ldn_monthly_mape": None, "Crps": 0.5}, 115_000)
+
+    assert log_metrics.call_args.args[0] == {"Crps": 0.5}
+
+
 def test_mlflow_quantile_table_uses_one_stable_path():
     """Repeated benchmark steps append rows to one MLflow table artifact."""
     logger = object.__new__(MLflowLogger)

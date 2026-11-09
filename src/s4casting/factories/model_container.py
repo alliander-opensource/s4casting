@@ -13,7 +13,7 @@ from s4casting.core.config import IOConfiguration, ModelConfiguration
 from s4casting.core.loss import CompositeLoss, SoftClipLoss, SubsetNLLLoss, SubsetPinballLoss
 from s4casting.core.machine import Machine
 from s4casting.core.model_container import ModelContainer
-from s4casting.model._encoders import PatchDecoder, PatchEncoder, SeperateLocTime, SeriesPatchEncoder, SSEncoder
+from s4casting.model._encoders import PatchDecoder, PatchEncoder, SeperateTime, SeriesPatchEncoder, SSEncoder
 from s4casting.model._heads import GMMHead, QuantileHead
 from s4casting.model.chronos import ChronosWrapper
 from s4casting.model.ss import SSModel
@@ -83,14 +83,8 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
             model=model, ddp=(DDP(model, device_ids=[machine.ddp.local_rank]) if machine.ddp else None)
         )
 
-    n_features = sum(
-        len(x.subset_features) if x.subset_features else x.n_features
-        for x in {k.split("_")[0]: v for k, v in io_config.features.items()}.values()
-    )
-
-    has_time = any(io_config.features[name].loader == "time" for name in io_config.feature_order)
-
-    n_data_features = n_features - 3 * has_time
+    n_data_features, n_time_features = io_config.input_feature_counts()
+    has_time = n_time_features > 0
     if config.patch_encoder.patch_size != 1 and n_data_features > config.n_out_features:
         warnings.warn(
             f"Weather auxiliary loss is disabled because patch_size="
@@ -125,7 +119,7 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
         )
 
     if has_time and config.model != "transformer":
-        patch_encoder = SeperateLocTime(patch_encoder)
+        patch_encoder = SeperateTime(patch_encoder, n_time_features)
 
     patch_decoder = PatchDecoder(
         latent_dim,
@@ -193,7 +187,7 @@ def provide_model_container(config: ModelConfiguration, io_config: IOConfigurati
             patch_decoder=patch_decoder,
             norm_clamp=config.norm_clamp,
             norm_eps=config.norm_eps,
-            has_time=has_time,
+            n_time_features=n_time_features,
             causal=config.transformer.causal,
         )
 

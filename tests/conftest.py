@@ -90,7 +90,6 @@ def load_config_with_time() -> Configuration:
         location="",
         loader="time",
         main_dataset="measurements",
-        n_features=3,
     )
 
     cfg.training.batch_size = 8

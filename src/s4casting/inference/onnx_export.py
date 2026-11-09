@@ -582,7 +582,7 @@ def verify_onnx(
         AssertionError: If any batch size deviates by more than the tolerance.
     """
     # onnxruntime is an optional dependency: exporting does not need a runtime.
-    import onnxruntime as ort  # noqa: PLC0415
+    import onnxruntime as ort  # noqa: PLC0415  # ty: ignore[unresolved-import]
 
     session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
 
@@ -625,7 +625,7 @@ def read_metadata(onnx_path: str) -> dict[str, typing.Any]:
         dict[str, typing.Any]: The metadata with the ``s4casting.`` prefix stripped.
             ``config`` is parsed back into a nested dict; the rest are strings.
     """
-    import onnx  # noqa: PLC0415
+    import onnx  # noqa: PLC0415  # ty: ignore[unresolved-import]
 
     model = onnx.load(onnx_path, load_external_data=False)
     metadata = {

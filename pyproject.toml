@@ -48,6 +48,8 @@ dependencies = [
     "folium>=0.20.0",
     "chronos-forecasting>=2.0.0rc4",
     "peft>=0.13.0,<0.18",
+    "fev>=0.10.0",
+    "datasets>=4.0.0",
 ]
 
 [dependency-groups]

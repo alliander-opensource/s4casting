@@ -135,7 +135,7 @@ class Metrics:
             ground_truth_ldn = quantile_pool1d(
                 self.Y.swapaxes(1, 2), kernel_size=self.month_kernel_size, stride=self.month_kernel_size, quantile=1.0
             )[0, 0, :]
-            return (torch.sqrt((ground_truth_ldn - predicted_ldn) ** 2) / ground_truth_ldn).mean().item()
+            return torch.abs((ground_truth_ldn - predicted_ldn) / ground_truth_ldn).mean().item()
         return None
 
     def odn_monthly_mape(self) -> torch.Tensor | None:
@@ -159,7 +159,7 @@ class Metrics:
                 self.Y.swapaxes(1, 2), kernel_size=self.month_kernel_size, stride=self.month_kernel_size, quantile=0.0
             )[0, 0, :]
 
-            return (torch.sqrt((ground_truth_odn - predicted_odn) ** 2) / ground_truth_odn).mean().item()
+            return torch.abs((ground_truth_odn - predicted_odn) / ground_truth_odn).mean().item()
         return None
 
     def crps(self) -> torch.Tensor:

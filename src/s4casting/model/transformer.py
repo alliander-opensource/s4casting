@@ -5,11 +5,16 @@ from torch import nn
 
 from s4casting.core.loss import SubsetNLLLoss
 from s4casting.model._blocks import MLP, RotaryPositionalEmbedding, SelfAttention
-from s4casting.model._encoders import PatchDecoder, SeriesPatchEncoder, SpatialEmbedding, TemporalEmbedding
+from s4casting.model._encoders import (
+    TIME_AND_LOCATION,
+    TIME_ONLY,
+    PatchDecoder,
+    SeriesPatchEncoder,
+    SpatialEmbedding,
+    TemporalEmbedding,
+)
 from s4casting.model._heads import GMMHead
 from s4casting.model._norm import denorm, norm, norm_target
-
-TIME_FEATURES = 3
 
 
 class TransformerModel(nn.Module):
@@ -31,7 +36,7 @@ class TransformerModel(nn.Module):
         loss_fn: nn.Module = SubsetNLLLoss(1, "masked"),
         patch_encoder: nn.Module = SeriesPatchEncoder(256, 8),
         patch_decoder: nn.Module = PatchDecoder(256, 256, 8, [15], [15]),
-        has_time: bool = True,
+        n_time_features: int = TIME_ONLY,
         causal: bool = False,
     ):
         """Initialize the TransformerModel.
@@ -50,7 +55,8 @@ class TransformerModel(nn.Module):
             norm_eps: Epsilon for norm.
             patch_encoder: Patch encoder module.
             patch_decoder: Patch decoder module.
-            has_time: if time, lat, lon is present
+            n_time_features: Trailing time channels of the input: 0 (none), 1 (unix time) or 3 (unix time,
+                latitude, longitude; adds a spatial embedding).
             causal: Whether the time attention is causal (tokens only attend to the past). Group
                 attention is never causal: feature order carries no causal structure, and a causal
                 mask there would stop the target (feature 0) from attending its covariates at all.
@@ -66,9 +72,12 @@ class TransformerModel(nn.Module):
         self.output_head = output_head
         self.patch_encoder = patch_encoder
         self.patch_decoder = patch_decoder
-        self.has_time = has_time
-        self.temporal_embedding = TemporalEmbedding(patch_size, latent_dim) if has_time else None
-        self.spatial_embedding = SpatialEmbedding(latent_dim) if has_time else None
+        if n_time_features not in (0, TIME_ONLY, TIME_AND_LOCATION):
+            raise ValueError(f"n_time_features must be 0, {TIME_ONLY} or {TIME_AND_LOCATION}, got {n_time_features}.")
+        self.n_time_features = n_time_features
+        self.has_time = n_time_features > 0
+        self.temporal_embedding = TemporalEmbedding(patch_size, latent_dim) if self.has_time else None
+        self.spatial_embedding = SpatialEmbedding(latent_dim) if n_time_features == TIME_AND_LOCATION else None
 
         self.transformer_layers = nn.ModuleList(
             TransformerLayer(
@@ -124,11 +133,16 @@ class TransformerModel(nn.Module):
 
         loss = None
         if y is not None:
+            # Clamp normalized targets to the same range as the normalized inputs: CPM can bias the
+            # per-sample statistics (the masked chunks are excluded from them), and an unclamped
+            # target many sigma out produces the NLL spikes seen in training. Bounded targets bound
+            # the per-element loss without touching the healthy majority of targets.
             y = norm_target(
                 mean_in=mean_in[..., :1],
                 std_in=std_in[..., :1],
                 y=y,
                 ym=ym,
+                clamp=self.norm_clamp,
             )
             loss = self.loss_fn(
                 out=x,
@@ -152,31 +166,34 @@ class TransformerModel(nn.Module):
         x: torch.Tensor,
         xm: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Separate load+weather features from time/loc features.
+        """Separate load+weather features from the trailing time channels.
 
         Returns:
             Tuple of tensors.
         """
-        return x[..., :-TIME_FEATURES], xm[..., :-TIME_FEATURES], x[..., -TIME_FEATURES:]
+        n = self.n_time_features
+        return x[..., :-n], xm[..., :-n], x[..., -n:]
 
     def _add_time_features(
         self,
         x: torch.Tensor,
         time_features: torch.Tensor | None,
     ) -> torch.Tensor:
-        """Add time/loc features.
+        """Add the time embeddings to every series token.
+
+        The temporal embedding of the unix-time channel is always added; the spatial embedding of the
+        location only when the input carries latitude and longitude.
 
         Returns:
             Tensors.
         """
-        if time_features is None:
-            return x
-        if self.temporal_embedding is None or self.spatial_embedding is None:
+        if time_features is None or self.temporal_embedding is None:
             return x
 
-        temporal_embedding = self.temporal_embedding(time_features[..., 0])
-        spatial_embedding = self.spatial_embedding(time_features[:, -1:, 1:])
-        return x + temporal_embedding[:, None, :, :] + spatial_embedding[:, None, :, :]
+        x = x + self.temporal_embedding(time_features[..., 0])[:, None, :, :]
+        if self.spatial_embedding is not None:
+            x = x + self.spatial_embedding(time_features[:, -1:, 1:])[:, None, :, :]
+        return x
 
 
 class TransformerLayer(nn.Module):

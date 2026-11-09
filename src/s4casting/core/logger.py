@@ -32,10 +32,13 @@ from s4casting.core.config import (
 )
 from s4casting.core.context import Context
 from s4casting.core.hooks import CommonHooks, TrainingHooks
+from s4casting.data.dataset.summary import format_summary, summarise_rates
 from s4casting.eval.external_data_eval import (
     build_summary_from_reports,
     get_external_benchmarks,
 )
+from s4casting.eval.fev_bench.callback import BENCHMARK_KEY as FEV_BENCH_KEY
+from s4casting.eval.fev_bench.callback import fev_bench_metrics
 
 
 class LoggerInterface:
@@ -60,6 +63,19 @@ class LoggerInterface:
             context (Context): Training context.
         """
         self.report_eval(context, iteration=context.configuration.training.maximum_steps)
+
+    @staticmethod
+    def bucket_summary(context: Context) -> pd.DataFrame | None:
+        """The training (context window, rate) bucket summary of the run, when a training batcher built one.
+
+        Args:
+            context (Context): Training context.
+
+        Returns:
+            pd.DataFrame | None: One row per bucket, or None outside training (inference, benchmarks).
+        """
+        summary = getattr(getattr(context, "batcher", None), "bucket_summary", None)
+        return None if summary is None or summary.empty else summary
 
     def evaluate(self, context: Context, iteration: int) -> None:
         """Run when evaluation is triggered.
@@ -179,10 +195,21 @@ class StdLogger(LoggerInterface):
         """
         self.progress_bar = tqdm(total=config.maximum_steps, desc="Training", dynamic_ncols=True)
         super().__init__(hookable)
+        hookable.start.register(self.start)
         if isinstance(hookable, TrainingHooks):
             hookable.step.register(self.report_eval)
             hookable.eval_plot.register(self.save_eval_plot)
             hookable.benchmark_plot.register(self.save_benchmark_plot)
+
+    def start(self, context: Context) -> None:
+        """Print the training bucket summary once, above the progress bar.
+
+        Args:
+            context (Context): Training context.
+        """
+        summary = self.bucket_summary(context)
+        if summary is not None:
+            self.progress_bar.write(f"Training buckets ({len(summary)}):\n{format_summary(summary)}")
 
     def report_eval(self, context: Context, iteration: int | None) -> None:
         """Report evaluation metrics to standard output.
@@ -310,6 +337,15 @@ class WandbLogger(LoggerInterface):
             resume="allow",
             notes=self.config.notes,
         )
+        summary = self.bucket_summary(context)
+        if summary is not None:
+            wandb.log(
+                {
+                    "training_buckets/per_bucket": wandb.Table(dataframe=_stringify_objects(summary)),
+                    "training_buckets/per_rate": wandb.Table(dataframe=_stringify_objects(summarise_rates(summary))),
+                },
+                step=0,
+            )
 
     def finished(self, context: Context) -> None:
         """Log final metrics and cleanly close wandb."""
@@ -511,6 +547,35 @@ class WandbLogger(LoggerInterface):
                         if html_path.exists():
                             self.log_html_panel(p, html_path, iteration)
 
+        # fev-bench results are only fresh when the fev hook produced them for this iteration; the
+        # same hook also fires after StefBeam, which must not re-log stale summaries.
+        if (
+            context.configuration.benchmarking.benchmarks.get(FEV_BENCH_KEY) is not None
+            and getattr(context, "fev_bench_iteration", None) == iteration
+        ):
+            wandb.log(fev_bench_metrics(context), step=iteration)
+            summary = context.fev_bench_summary  # type: ignore[attr-defined]
+            wandb.log({"fev_bench/summary": wandb.Table(dataframe=_stringify_objects(summary))}, step=iteration)
+            leaderboard = context.fev_bench_leaderboard  # type: ignore[attr-defined]
+            if leaderboard is not None:
+                table = wandb.Table(dataframe=_stringify_objects(leaderboard.reset_index()))
+                wandb.log({"fev_bench/leaderboard": table}, step=iteration)
+
+
+def _stringify_objects(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy with object columns (lists, dicts) rendered as strings so table loggers accept them.
+
+    Args:
+        df (pd.DataFrame): Frame to convert.
+
+    Returns:
+        pd.DataFrame: Converted copy.
+    """
+    out = df.copy()
+    for col in out.select_dtypes(include="object").columns:
+        out[col] = out[col].astype(str)
+    return out
+
 
 class MLflowLogger(LoggerInterface):
     """MLflow logger for tracking experiments."""
@@ -524,6 +589,13 @@ class MLflowLogger(LoggerInterface):
         "MLFLOW_HTTP_REQUEST_MAX_RETRIES": "0",
         "MLFLOW_HTTP_REQUEST_TIMEOUT": "5",
     }
+    # MLflow loggers that warn on every request or every sampling tick about conditions we cannot act on:
+    # the GPU monitor asks the driver for a power reading some GPUs do not expose, and the sagemaker-mlflow
+    # plugin's header provider fails to parse a non-ARN tracking URI (the cluster and local servers).
+    _NOISY_LOGGERS: ClassVar[tuple[str, ...]] = (
+        "mlflow.system_metrics.metrics.gpu_monitor",
+        "mlflow.tracking.request_header.registry",
+    )
 
     def __init__(
         self,
@@ -543,6 +615,7 @@ class MLflowLogger(LoggerInterface):
         self.config = config
         self.run_id: str | None = None
         self.metric_names: dict[str, str] = {}
+        self.quiet_noisy_loggers()
         self.preflight(config)
 
         output_path = Path(output_dir)
@@ -559,6 +632,12 @@ class MLflowLogger(LoggerInterface):
             hookable.benchmark_plot.register(self.save_benchmark_plot)
             hookable.benchmark_metrics.register(self.report_benchmark)
             hookable.benchmark_complete.register(self.benchmark_complete)
+
+    @classmethod
+    def quiet_noisy_loggers(cls) -> None:
+        """Raise the level of MLflow loggers that repeat unactionable warnings to ERROR."""
+        for name in cls._NOISY_LOGGERS:
+            logging.getLogger(name).setLevel(logging.ERROR)
 
     @classmethod
     def preflight(cls, config: MLflowLoggingConfiguration) -> None:
@@ -648,7 +727,9 @@ class MLflowLogger(LoggerInterface):
         """Sanitize metric names and reject collisions.
 
         Metric values are intentionally left untouched so MLflow can apply its
-        supported scalar conversion rules to the complete batch.
+        supported scalar conversion rules to the complete batch. ``None`` values are dropped: a
+        metric that does not apply to the evaluated sample (the LDN monthly MAPE of an ODN-only
+        batch, for example) is reported as ``None`` and MLflow rejects it, unlike W&B.
 
         Args:
             metrics: Metrics keyed by their s4casting names.
@@ -661,6 +742,8 @@ class MLflowLogger(LoggerInterface):
         """
         prepared = {}
         for original_name, value in metrics.items():
+            if value is None:
+                continue
             sanitized_name = self._sanitize_metric_name(original_name)
             previous_name = self.metric_names.get(sanitized_name)
             if previous_name is not None and previous_name != original_name:
@@ -744,6 +827,13 @@ class MLflowLogger(LoggerInterface):
         items = list(flattened.items())
         for start in range(0, len(items), self._PARAM_BATCH_SIZE):
             mlflow.log_params(dict(items[start : start + self._PARAM_BATCH_SIZE]), synchronous=True)  # type: ignore[possibly-missing-attribute]
+
+        summary = self.bucket_summary(context)
+        if summary is not None:
+            mlflow.log_table(_stringify_objects(summary), artifact_file="training_buckets/per_bucket.json")
+            mlflow.log_table(
+                _stringify_objects(summarise_rates(summary)), artifact_file="training_buckets/per_rate.json"
+            )
 
     def finished(self, context: Context) -> None:
         """Log final metrics and mark the MLflow run finished.
@@ -939,3 +1029,17 @@ class MLflowLogger(LoggerInterface):
                         html_path = context.stefbeam_results_path / available_ats / f"{panel}.html"  # type: ignore[union-attr]
                         if html_path.exists():
                             self.log_html_panel(panel, html_path, iteration)
+
+        if (
+            context.configuration.benchmarking.benchmarks.get(FEV_BENCH_KEY) is not None
+            and getattr(context, "fev_bench_iteration", None) == iteration
+        ):
+            self._log_metrics(fev_bench_metrics(context), iteration)
+            summary = _stringify_objects(context.fev_bench_summary)  # type: ignore[attr-defined]
+            mlflow.log_table(summary, artifact_file=f"fev_bench/summary_{iteration:07d}.json")
+            leaderboard = context.fev_bench_leaderboard  # type: ignore[attr-defined]
+            if leaderboard is not None:
+                mlflow.log_table(
+                    _stringify_objects(leaderboard.reset_index()),
+                    artifact_file=f"fev_bench/leaderboard_{iteration:07d}.json",
+                )

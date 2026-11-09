@@ -14,6 +14,7 @@ from s4casting.data.dataset.dataset import IntervalDataset, TimeseriesDataset
 from s4casting.data.dataset.indexes import get_timestamps, intervals_for_location, location_id
 from s4casting.data.utils import collate_single_interval
 from s4casting.eval.evaluator_heads import EvaluatorHead
+from s4casting.eval.fev_bench.callback import run_fevbench
 from s4casting.eval.stef_benchmark.beam_callback import run_stefbeam
 
 
@@ -46,13 +47,24 @@ class Benchmarker:
             if bench_config.benchmarks.get("StefBeamBenchmark") is not None:
                 self.hooks.stef_beam.register(run_stefbeam)
 
+            if bench_config.benchmarks.get("FevBenchBenchmark") is not None:
+                self.hooks.fev_bench.register(run_fevbench)
+
     def finished(self, context: Context) -> None:
-        """Run benchmarking when training is finished.
+        """Score the final checkpoint when the last step did not fall on a benchmarking interval.
+
+        Fires the same hooks the training loop fires at an interval; only the configured benchmarks are
+        registered on them, so nothing else runs. A last step the loop already benchmarked (including a
+        zero-shot run, benchmarked at iteration 0) is not scored twice.
 
         Args:
             context (Context): Training context.
         """
-        self.benchmark(context, iteration=context.configuration.training.maximum_steps)
+        training = context.configuration.training
+        if not isinstance(self.hooks, TrainingHooks) or training.maximum_steps % training.benchmarking_interval == 0:
+            return
+        for hook in (self.hooks.benchmark, self.hooks.stef_beam, self.hooks.fev_bench):
+            hook.call(context, training.maximum_steps)
 
     def sample_dataset(self, location: str, context: Context):
         """Samples location at a specific sample rate.
@@ -152,13 +164,16 @@ class Benchmarker:
                     else sample_config.sample_interval_minutes
                 )
 
-                prediction, loss = run_in_batches(
-                    benchmarking_model,
-                    context.configuration.training.batch_size,
-                    (X, xm, Y, ym),
-                    sample_config.sample_interval_minutes,
-                    output_interval,
-                )
+                # Benchmark at the training precision so the reported metrics reflect the model as
+                # it is optimized (and as it would be deployed).
+                with context.machine.autocast(context.configuration.training.precision):
+                    prediction, loss = run_in_batches(
+                        benchmarking_model,
+                        context.configuration.benchmarking.batch_size,
+                        (X, xm, Y, ym),
+                        sample_config.sample_interval_minutes,
+                        output_interval,
+                    )
                 self.head_evaluator.report(
                     context=context,
                     prediction=prediction[:, :, 0, ...],
