@@ -247,6 +247,34 @@ class StdLogger(LoggerInterface):
                     to_print[f"benchmark_{context.benchmark_location}_{key.capitalize()}"] = value
         self.progress_bar.set_postfix(to_print)
 
+    _image_export_failed: ClassVar[bool] = False
+
+    @classmethod
+    def _write_figure(cls, fig: Figure, path: Path) -> None:
+        """Write a figure as PNG, or as HTML when static image export is unavailable.
+
+        Plotly renders PNGs through kaleido, which since version 1.0 needs a Chrome binary
+        that offline machines such as training clusters cannot download. A missing
+        renderer must not end a training run, so the figure is saved as a self-contained
+        HTML file instead and the fallback is announced once.
+
+        Args:
+            fig (Figure): Plotly figure to save.
+            path (Path): Target ``.png`` path; the fallback uses the same stem with ``.html``.
+        """
+        if not cls._image_export_failed:
+            try:
+                fig.write_image(str(path))
+                return
+            except (RuntimeError, ImportError, OSError) as error:
+                cls._image_export_failed = True
+                logging.warning(
+                    "Static image export is unavailable (%s). Saving plots as HTML instead; install Chrome "
+                    "with `plotly_get_chrome` to get PNGs.",
+                    str(error).strip().splitlines()[0] if str(error).strip() else type(error).__name__,
+                )
+        fig.write_html(str(path.with_suffix(".html")), include_plotlyjs="cdn")
+
     def save_eval_plot(self, context: Context, iteration: int | None, fig: Figure, outdir="plots") -> None:
         """Save evaluation plot to disk.
 
@@ -257,8 +285,10 @@ class StdLogger(LoggerInterface):
             outdir (str): Output directory to save plots.
         """
         Path(outdir).mkdir(parents=True, exist_ok=True)
-        fig.write_image(
-            f"{outdir}/eval_{context.input_validation_sample_rate}_{context.output_validation_sample_rate}_{iteration}.png"
+        self._write_figure(
+            fig,
+            Path(outdir)
+            / f"eval_{context.input_validation_sample_rate}_{context.output_validation_sample_rate}_{iteration}.png",
         )
 
     def save_benchmark_plot(
@@ -279,7 +309,7 @@ class StdLogger(LoggerInterface):
             outdir (str): Output directory to save plots.
         """
         Path(outdir).mkdir(parents=True, exist_ok=True)
-        fig.write_image(f"{outdir}/benchmark_{context.benchmark_location}_{plot_type}_{iteration}.png")
+        self._write_figure(fig, Path(outdir) / f"benchmark_{context.benchmark_location}_{plot_type}_{iteration}.png")
 
 
 class WandbLogger(LoggerInterface):
@@ -580,6 +610,8 @@ def _stringify_objects(df: pd.DataFrame) -> pd.DataFrame:
 class MLflowLogger(LoggerInterface):
     """MLflow logger for tracking experiments."""
 
+    _image_export_failed: ClassVar[bool] = False
+
     _MAX_METRIC_NAME_LENGTH: ClassVar[int] = 250
     _PARAM_BATCH_SIZE: ClassVar[int] = 100
     _INVALID_METRIC_NAME_CHARACTER: ClassVar[re.Pattern[str]] = re.compile(
@@ -799,11 +831,24 @@ class MLflowLogger(LoggerInterface):
         filename = self._sanitize_artifact_component(name)
         artifact_root = f"steps/step-{step:08d}/figures/{filename}"
         mlflow.log_figure(fig, f"{artifact_root}.html")  # type: ignore[possibly-missing-attribute]
+        if self._image_export_failed:
+            return
         # MLflow does not natively save plotly figures, or byte-level images (fig.to_image('png')),
         # so we need to save as PNG and then log.
         with TemporaryDirectory() as temp_dir:
             image_path = Path(temp_dir) / f"{filename}.png"
-            fig.write_image(str(image_path))
+            try:
+                fig.write_image(str(image_path))
+            except (RuntimeError, ImportError, OSError) as error:
+                # kaleido >= 1.0 needs a Chrome binary that offline machines cannot download.
+                # The interactive HTML artifact is already logged, so only the image is lost.
+                type(self)._image_export_failed = True
+                logging.warning(
+                    "Static image export is unavailable (%s); MLflow keeps the HTML figures only. "
+                    "Install Chrome with `plotly_get_chrome` to get PNGs.",
+                    str(error).strip().splitlines()[0] if str(error).strip() else type(error).__name__,
+                )
+                return
             mlflow.log_image(  # type: ignore[possibly-missing-attribute]
                 mlflow.Image(str(image_path)),  # type: ignore[possibly-missing-attribute]
                 key=f"figures/{filename}",

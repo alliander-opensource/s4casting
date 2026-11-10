@@ -26,7 +26,7 @@ from s4casting.core.config import (
 )
 from s4casting.core.context import Context
 from s4casting.core.hooks import TrainingHooks
-from s4casting.core.logger import MLflowLogger
+from s4casting.core.logger import MLflowLogger, StdLogger
 from s4casting.factories.logger import provide_loggers
 from tests.utils import load_config as load_test_config
 
@@ -301,6 +301,70 @@ def test_mlflow_quantile_table_uses_one_stable_path():
     pd.testing.assert_series_equal(first_table["step"], pd.Series([10, 10], name="step"))
     pd.testing.assert_series_equal(second_table["step"], pd.Series([20, 20], name="step"))
     assert first_table["location"].tolist() == ["location?", "location?"]
+
+
+@pytest.fixture()
+def std_logger(monkeypatch):
+    """A bare StdLogger with the image-export fallback flag reset.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+
+    Returns:
+        StdLogger: Logger instance without running ``__init__``.
+    """
+    monkeypatch.setattr(StdLogger, "_image_export_failed", False)
+    return object.__new__(StdLogger)
+
+
+def test_std_logger_writes_png_when_image_export_works(std_logger, tmp_path):
+    """The happy path writes a PNG and nothing else."""
+    figure = Mock()
+    context = SimpleNamespace(input_validation_sample_rate=15, output_validation_sample_rate=15)
+
+    std_logger.save_eval_plot(context, 7, figure, outdir=str(tmp_path))
+
+    figure.write_image.assert_called_once_with(str(tmp_path / "eval_15_15_7.png"))
+    figure.write_html.assert_not_called()
+
+
+def test_std_logger_falls_back_to_html_without_chrome(std_logger, tmp_path, caplog):
+    """A missing PNG renderer must not end training: the plot is saved as HTML, with one warning."""
+    figure = Mock()
+    figure.write_image.side_effect = RuntimeError("Kaleido requires Google Chrome to be installed.")
+    context = SimpleNamespace(input_validation_sample_rate=15, output_validation_sample_rate=15, benchmark_location="x")
+
+    with caplog.at_level(logging.WARNING):
+        std_logger.save_eval_plot(context, 7, figure, outdir=str(tmp_path))
+        std_logger.save_benchmark_plot(context, 8, figure, "quantile", outdir=str(tmp_path))
+
+    figure.write_image.assert_called_once()  # not retried once known to fail
+    assert [c.args[0] for c in figure.write_html.call_args_list] == [
+        str(tmp_path / "eval_15_15_7.html"),
+        str(tmp_path / "benchmark_x_quantile_8.html"),
+    ]
+    assert sum("Static image export is unavailable" in r.message for r in caplog.records) == 1
+
+
+def test_mlflow_figure_keeps_html_without_chrome(monkeypatch, caplog):
+    """Without a PNG renderer the HTML artifact is still logged and the image step is skipped."""
+    monkeypatch.setattr(MLflowLogger, "_image_export_failed", False)
+    logger = object.__new__(MLflowLogger)
+    figure = Mock()
+    figure.write_image.side_effect = RuntimeError("Kaleido requires Google Chrome to be installed.")
+
+    with (
+        patch("s4casting.core.logger.mlflow.log_figure") as log_figure,
+        patch("s4casting.core.logger.mlflow.log_image") as log_image,
+        caplog.at_level(logging.WARNING),
+    ):
+        logger._log_figure("benchmark/location?", figure, 12)
+        logger._log_figure("benchmark/location?", figure, 13)
+
+    assert log_figure.call_count == 2
+    figure.write_image.assert_called_once()
+    log_image.assert_not_called()
+    assert sum("Static image export is unavailable" in r.message for r in caplog.records) == 1
 
 
 def test_mlflow_figure_logs_html_and_png():
