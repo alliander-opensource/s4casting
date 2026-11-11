@@ -281,7 +281,7 @@ def test_build_leaderboard_ranks_against_baselines(tmp_path):
 
 
 def test_train_end_to_end_cpu_with_fev_bench(tmp_path, load_config_gmm: Configuration):
-    """Training runs the fev-bench hook for the zero-shot baseline (iteration 0) and at the benchmarking interval."""
+    """Training runs the fev-bench hook at iteration 0 (zero-shot), at each interval and for the final model."""
     cfg = load_config_gmm
     cfg.machine.device_kind = "cpu"
     cfg.training.iteration = 0  # zero-shot benchmark before the first step
@@ -302,7 +302,7 @@ def test_train_end_to_end_cpu_with_fev_bench(tmp_path, load_config_gmm: Configur
     train(cfg)
 
     written = sorted(p.name for p in (tmp_path / "out" / "fev-bench").glob("iter_*.csv"))
-    assert written == ["iter_0000000.csv", "iter_0000001.csv"]
+    assert written == ["iter_0000000.csv", "iter_0000001.csv", "iter_0000002.csv"]
 
 
 def test_forecaster_pads_inputs_like_training(tmp_path):
