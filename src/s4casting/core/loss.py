@@ -111,6 +111,10 @@ class SubsetNLLLoss(nn.Module):
         Returns:
             torch.Tensor: Average loss over entire signal as torch.tensor with single value
         """
+        # fp32 island under mixed precision: logsumexp, sigma^2 and the 1e-6 stability epsilon
+        # need full precision whatever dtype the trunk computed in.
+        out = out.float()
+        target = target.float()
         if mask is None:
             mask = torch.ones_like(target)
         mask = mask.bool()
@@ -193,6 +197,9 @@ class SubsetPinballLoss(nn.Module):
         Returns:
             torch.Tensor: Average loss over entire signal as torch.tensor with single value
         """
+        # fp32 island under mixed precision: quantile errors accumulate in full precision.
+        out = out.float()
+        target = target.float()
         if mask is None:
             mask = torch.ones_like(target)
         mask = mask.bool()

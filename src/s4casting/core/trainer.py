@@ -43,6 +43,7 @@ class Trainer:
         self._ddp = machine.ddp
         self._ddp_loss_sync = machine.ddp_loss_sync
         self._main_process = machine.main_process
+        self._machine = machine
         self.hooks = TrainingHooks()
         # TODO: probably need to init seed for random.
 
@@ -82,13 +83,14 @@ class Trainer:
         if self._iteration == 0 and self._main_process:
             self.hooks.benchmark.call(context, 0)
             self.hooks.stef_beam.call(context, 0)
+            self.hooks.fev_bench.call(context, 0)
 
         while self._iteration < self._config.maximum_steps:
             self.epoch = self._iteration // self._config.n_samples_per_epoch
-            if context.machine.ddp:
-                context.batcher.train_loader.batch_sampler.set_epoch(  # type: ignore[possibly-missing-attribute]
-                    self.epoch
-                )
+            # also without DDP: the sampler reseeds from seed + epoch on every pass over the loader
+            context.batcher.train_loader.batch_sampler.set_epoch(  # type: ignore[possibly-missing-attribute]
+                self.epoch
+            )
             for X_all, sample_config in context.batcher.train_loader:  # type: ignore[attr-defined]
                 if self._iteration > 0 and self._main_process:
                     # Only needed after first set of iterations for the main process
@@ -99,6 +101,7 @@ class Trainer:
                     if self._iteration % self._config.benchmarking_interval == 0:
                         self.hooks.benchmark.call(context, self._iteration)
                         self.hooks.stef_beam.call(context, self._iteration)
+                        self.hooks.fev_bench.call(context, self._iteration)
                 if self._iteration > 0 and (self._iteration % self._config.n_samples_per_epoch == 0):
                     self.hooks.epoch.call(context, self._iteration)
 
@@ -127,14 +130,17 @@ class Trainer:
             input_interval = sample_config.sample_interval_minutes[micro_step * B : (micro_step + 1) * B]
 
             output_interval = select_rate(input_interval, context.configuration.model.output_sample_intervals_minutes)  # ty: ignore[possibly-missing-attribute]
-            _, loss = context.model_container.model(
-                X,
-                Xm,
-                input_interval,
-                output_interval,
-                Y,
-                Ym,
-            )
+            # Autocast covers forward + loss only; backward and the optimizer run outside, on the
+            # fp32 master weights.
+            with self._machine.autocast(self._config.precision):
+                _, loss = context.model_container.model(
+                    X,
+                    Xm,
+                    input_interval,
+                    output_interval,
+                    Y,
+                    Ym,
+                )
 
             loss = loss / grad_accu
             loss.backward()

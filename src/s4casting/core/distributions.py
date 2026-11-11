@@ -100,48 +100,45 @@ def gmm_to_quantiles(
     sigma: torch.Tensor,
     mu: torch.Tensor,
     quantile_values: list,
-    n: int = 1000,
+    n: int = 40,
+    eps: float = 1e-6,
 ) -> torch.Tensor:
-    """Convert Gaussian Mixture Model using torch.distributions to quantiles.
+    """Quantiles of a Gaussian mixture, solved per forecast by bisection of the mixture CDF.
 
-    TODO: Maybe this should be moved to another location? s4casting/eval/funcitonal.py?
-    GMM has 3 parameters pi, mu, sigma which determine the means, standard deviations and amounts.
-    Defaults to 4*sigma ranges.
+    Every (batch, step) element gets its own search interval, ``mu +- 6 sigma`` over its components, so the
+    precision is relative to that element's own scale. The previous implementation evaluated the CDF on one
+    grid of 1000 points spanning the whole batch and snapped each quantile up to the first grid point at or
+    above the level; with series of different magnitude in one batch (a national load next to a small
+    zone, as the benchmarks batch them) the grid step was a sizeable fraction of the small series, which
+    biased its quantiles upward by tens of percent while the large series were unaffected.
 
     Args:
-        pi (torch.tensor): log factor of GMM.
-        sigma (torch.tensor): covariance of GMM.
-        mu (torch.tensor): mean of GMM.
-        quantile_values (list): which quantiles.
-        n (int): n samples per discrete pdf.
+        pi (torch.Tensor): Mixture weights, shape (B, L, G).
+        sigma (torch.Tensor): Component standard deviations, shape (B, L, G).
+        mu (torch.Tensor): Component means, shape (B, L, G).
+        quantile_values (list): Quantile levels in (0, 1).
+        n (int): Bisection iterations; 40 gives a relative precision of 1e-12 of the search interval.
+        eps (float): Floor added to the weights and scales for numerical stability.
 
     Returns:
-        quantiles (torch.Tensor): Quantile predictions from GMM
-
+        torch.Tensor: Quantiles, shape (B, L, len(quantile_values)).
     """
-    B = sigma.shape[0]
-    L = sigma.shape[1]
-
-    # get ranges
-    min_val, max_val = gmm_bounds(sigma, mu)
-    xs = torch.linspace(min_val, max_val, n, device=mu.device)
-
-    # make cdf using torch.distributions
-    cdf = gmm_to_cdf(pi, sigma, mu, xs)
-
-    # make quantiles
-    quantiles = torch.zeros((B, L, len(quantile_values)))
-
-    for q_idx, q in enumerate(quantile_values):
-        c_idxs = torch.argmax((cdf >= q).int(), dim=2)  # get first True index for every forecast
-
-        # Handle edge case where the CDF might not exceed the quantile value within the bounds
-        zero_indexes = torch.nonzero(c_idxs == 0, as_tuple=False)
-        for z in zero_indexes:
-            b, l = z[0], z[1]  # Extract batch and sequence indices
-            if torch.all(cdf[b, l, :] < q):  # Check along the n_samples dimension
-                c_idxs[b, l] = len(xs) - 1  # Set to the last index in xs
-
-        quantiles[:, :, q_idx] = xs[c_idxs]
-
+    pi = torch.nan_to_num(pi.float()) + eps
+    sigma = torch.nan_to_num(sigma.float()) + eps
+    mu = torch.nan_to_num(mu.float())
+    mixture = torch.distributions.MixtureSameFamily(
+        mixture_distribution=torch.distributions.Categorical(probs=pi),
+        component_distribution=torch.distributions.Normal(loc=mu, scale=sigma),
+    )
+    lower = (mu - 6 * sigma).amin(dim=-1)  # (B, L)
+    upper = (mu + 6 * sigma).amax(dim=-1)
+    quantiles = torch.empty((*mu.shape[:-1], len(quantile_values)), dtype=torch.float32, device=mu.device)
+    for q_idx, level in enumerate(quantile_values):
+        low, high = lower.clone(), upper.clone()
+        for _ in range(n):
+            mid = (low + high) / 2
+            below = mixture.cdf(mid) < level
+            low = torch.where(below, mid, low)
+            high = torch.where(below, high, mid)
+        quantiles[..., q_idx] = (low + high) / 2
     return quantiles

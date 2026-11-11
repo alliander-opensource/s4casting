@@ -21,6 +21,16 @@ class ChronosWrapper(nn.Module):
 
     Forward signature is identical to other s4casting models:
         (x, xm, input_interval, output_interval, y, ym) → (predictions, loss)
+
+    Not supported, by decision rather than omission:
+
+    * Covariate dropout while fine-tuning. The batcher presents a dropped covariate as an all-masked
+      channel, which Chronos-2 would attend to as an all-missing variate of the group and which degrades
+      its forecasts; the configuration rejects ``training.covariate_dropout`` for this model.
+    * The s4casting fev-bench adapter. Chronos is always scored through its own fev integration
+      (``Chronos2Pipeline.predict_fev``), so its numbers follow the published recipe: its own context
+      length, every task covariate, and no rate or window handling by us. The forecast horizon is
+      therefore the fixed ``prediction_length`` here, never read off the mask.
     """
 
     def __init__(

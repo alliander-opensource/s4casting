@@ -10,9 +10,10 @@ In particular, this repository uses the **Liander Power Dataset**, which is publ
 [Liander Open Data portal](https://www.liander.nl/over-ons/open-data#lianderpower).
 
 This dataset consists of:
-- **Historical Power Measurements**: 5-minute averaged active power readings (in MW) collected across Alliander's electrical grid, measured in UTC timezone.  
+- **Historical Power Measurements**: 5-minute averaged active power readings (in MW) collected across Alliander's electrical grid, measured in UTC timezone.
 - **Historical Weather Data**: Sourced from providers such as Open-Meteo, offering temperature, wind, and shortwave_radiation records, measured in UTC timezone.
-- **Powerpile dataset**: Publicly available datasets containing power consumption data from various locations.                                    
+- **Powerpile dataset**: Publicly available datasets containing power consumption data from various locations.
+- **fev-bench energy datasets**: The 26 Energy-domain evaluation tasks of [fev-bench](https://arxiv.org/abs/2509.26468), streamed from the Hugging Face Hub dataset `autogluon/fev_datasets` (or mirrored to `data/fev_datasets` by `data/get_data.sh`). Used only for benchmarking, never for training.
 
 ## Data Structure                                                                                                                                 
 

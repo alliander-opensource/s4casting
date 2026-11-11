@@ -24,4 +24,9 @@ def provide_optimizer(config: OptimizerConfiguration, model_parameters: ParamsT)
         betas=(config.beta1, config.beta2),
         eps=config.eps,
         weight_decay=config.weight_decay,
+        # AdamW-style decay (scaled by the learning rate). RAdam's default couples the decay into the
+        # gradient before Adam's normalisation, which drives every small-gradient weight to zero at one
+        # learning rate per step: a 66M run with weight_decay = 0.01 had its LayerNorm, attention and MLP
+        # weights at 1e-8 to 1e-42 by step 50k and emitted a constant forecast.
+        decoupled_weight_decay=True,
     )

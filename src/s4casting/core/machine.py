@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import timedelta
 from typing import Literal
 
@@ -11,8 +11,6 @@ import torch
 import torch.amp
 from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt
 from torch.distributed import destroy_process_group, init_process_group  # type: ignore[possibly-missing-import]
-
-from s4casting.core.config import DTYPE_MAP, DType
 
 
 class MachineDDP(BaseModel):
@@ -52,11 +50,11 @@ class Machine(BaseModel):
             destroy_process_group()
 
     @contextmanager
-    def context(self, model_dtype: DType) -> Generator[None, None, None]:
-        """Context manager for setting up the device and AMP settings.
+    def context(self) -> Generator[None, None, None]:
+        """Context manager for setting up the device and TF32 matmuls.
 
-        Args:
-            model_dtype (DType): Data type for the model.
+        Mixed precision is not applied here: a global autocast would also cover backward, optimizer
+        steps and checkpointing. The forward+loss call sites open :meth:`autocast` themselves.
 
         Yields:
             Generator[None, None, None]: Context manager generator.
@@ -65,14 +63,23 @@ class Machine(BaseModel):
             with torch.cuda.device(self.torch_device):
                 torch.backends.cuda.matmul.allow_tf32 = True
                 torch.backends.cudnn.allow_tf32 = True
-
-                with torch.amp.autocast(
-                    device_type=self.torch_device_kind,
-                    dtype=DTYPE_MAP[model_dtype],
-                ):
-                    yield
+                yield
         else:
             yield
+
+    def autocast(self, precision: Literal["fp32", "bf16"]):
+        """Get the autocast context for one forward+loss call at the configured training precision.
+
+        Args:
+            precision (str): 'fp32' or 'bf16' (see training.precision).
+
+        Returns:
+            Context manager: torch.amp.autocast on CUDA for 'bf16', otherwise a no-op, so CPU runs
+            (tests) silently stay fp32.
+        """
+        if self.torch_device_kind != "cuda" or precision == "fp32":
+            return nullcontext()
+        return torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
 
     @property
     def local_seed_offset(self) -> int:

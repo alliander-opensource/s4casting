@@ -213,6 +213,34 @@ def test_checkpointer_warm_starts_from_safetensors(
     optimizer.load_state_dict.assert_not_called()
 
 
+def test_checkpointer_resets_optimizer_when_dropping_spatial_embedding(
+    small_config: Configuration, checkpoint, tmp_path: pathlib.Path
+) -> None:
+    """A location-trained checkpoint loads into a time-only model as a warm start with a fresh optimizer."""
+    path, expected = checkpoint
+    saved = FileAccess(str(path)).load_pydantic()
+    state_dict = torch.load(io.BytesIO(saved["torch_model"]), weights_only=True)
+    state_dict["module.spatial_embedding.weight"] = torch.zeros(3, 4)
+    model_buffer = io.BytesIO()
+    torch.save(state_dict, model_buffer)
+    legacy_path = tmp_path / "checkpoint_with_location.pt"
+    FileAccess(str(legacy_path)).save_pydantic(SavedCheckpoint(**{**saved, "torch_model": model_buffer.getvalue()}))
+
+    model = build_model(small_config)
+    optimizer = Mock()
+    context = SimpleNamespace(
+        model_container=SimpleNamespace(model=model),
+        machine=SimpleNamespace(torch_device="cpu", ddp=False),
+        optimizer=optimizer,
+    )
+    with pytest.warns(UserWarning, match="optimizer state is not restored"):
+        Checkpointer(CommonHooks(), load=str(legacy_path)).load(context)  # type: ignore[arg-type]
+
+    for key, value in expected.items():
+        assert torch.equal(model.state_dict()[key], value)
+    optimizer.load_state_dict.assert_not_called()
+
+
 def test_conversion_is_byte_reproducible(checkpoint, tmp_path: pathlib.Path) -> None:
     """Converting the same checkpoint with the same provenance twice yields identical bytes."""
     path, _ = checkpoint

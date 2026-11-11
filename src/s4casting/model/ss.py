@@ -7,7 +7,7 @@ from torch import nn
 
 from s4casting.core.loss import CompositeLoss, SubsetNLLLoss
 from s4casting.model._blocks import GruBlock, S4Block, S6Block, SequenceResidualBlock
-from s4casting.model._encoders import PatchDecoder, PatchEncoder, SeperateLocTime
+from s4casting.model._encoders import PatchDecoder, PatchEncoder
 from s4casting.model._heads import GMMHead
 from s4casting.model._norm import denorm, norm, norm_target
 from s4casting.model.weather import WeatherAuxTask
@@ -102,7 +102,7 @@ class SSModel(nn.Module):
             xm=xm,
             eps=self.norm_eps,
             clamp=self.norm_clamp,
-            dims=torch.arange(x.shape[-1] - 3 * isinstance(self.patch_encoder, SeperateLocTime)),
+            dims=torch.arange(x.shape[-1] - getattr(self.patch_encoder, "n_time_features", 0)),
         )
 
         x, weather_gt, weather_mask = self.weather_aux.prepare(x)

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import json
+import warnings
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -142,7 +143,7 @@ class OptimizerConfiguration(StrictModel):
     beta1: float = Field(0.9, description="First momentum coefficient (RAdam β1).")
     beta2: float = Field(0.99, description="Second momentum coefficient (RAdam β2).")
     eps: float = Field(1e-8, description="Small constant for numerical stability.")
-    weight_decay: float = Field(1e-2, description="L2 weight decay regularization strength.")
+    weight_decay: float = Field(1e-2, description="Decoupled (AdamW-style) weight decay, scaled by the learning rate.")
     gradient_clipping: float = Field(0.0, description="Gradient norm clipping threshold; 0 disables clipping.")
 
 
@@ -329,8 +330,9 @@ class ModelConfiguration(StrictModel):
     predict_width: PositiveInt | tuple[float, float] = Field(
         2,
         description=(
-            "Forecast horizon. Either absolute days (int) or a percent range tuple "
-            "(min_percent, max_percent) where each is in [0.05, 0.5]."
+            "Forecast horizon. Either absolute days (int) or a fraction range tuple (min, max) of the sample "
+            "length, each in [0.05, 0.5]. The range is drawn per sample under the 'randomprediction' and 'cpm' "
+            "tasks, so the horizon is expressed independently of the sample rate."
         ),
     )
 
@@ -397,6 +399,39 @@ class DatasetConfiguration(StrictModel):
     n_features: int = Field(1, description="Number of features in the dataset.")
     main_dataset: str = Field("", description="Name of the main dataset.")
     subset_features: list[str] = Field([], description="List of subset features to use from the dataset.")
+    include_location: bool = Field(
+        False,
+        description="For loader='time' only: also emit the location's latitude and longitude after the unix "
+        "time, so the models add a spatial embedding. Off by default, because a model trained without location "
+        "transfers to series that carry no coordinates (external datasets, benchmarks).",
+    )
+
+    @model_validator(mode="after")
+    def _time_loader_channels(self) -> "DatasetConfiguration":
+        """Derive the time loader's channel count from ``include_location``.
+
+        The time loader emits the unix time alone or followed by latitude and longitude, so its channel count
+        is 1 or 3 and follows from the flag. ``n_features`` need not be written for it; an explicit value that
+        disagrees with the flag is rejected. The flag is meaningless for any other loader and is rejected there.
+
+        Raises:
+            ValueError: If ``include_location`` is set on a non-time loader, or ``n_features`` contradicts it.
+
+        Returns:
+            DatasetConfiguration: The validated configuration.
+        """
+        if self.loader != "time":
+            if self.include_location:
+                raise ValueError("include_location is only valid for loader='time'.")
+            return self
+        expected = 3 if self.include_location else 1
+        if "n_features" in self.model_fields_set and self.n_features != expected:
+            raise ValueError(
+                f"loader='time' with include_location={self.include_location} provides {expected} channel(s); "
+                f"n_features={self.n_features} contradicts it. Leave n_features unset for the time loader."
+            )
+        self.n_features = expected
+        return self
 
 
 class IOConfiguration(StrictModel):
@@ -424,6 +459,25 @@ class IOConfiguration(StrictModel):
         },
         description="Pairs of valid interval and min max days in the context windows",
     )
+
+    def input_feature_counts(self) -> tuple[int, int]:
+        """Count the model input channels implied by this configuration.
+
+        Datasets sharing a prefix (``measurements_cdb``, ``measurements_eweld``, ...) form one feature group
+        and are counted once. The time loader contributes its channels (unix time, optionally latitude and
+        longitude) at the end of the input.
+
+        Returns:
+            tuple[int, int]: (data channels: target + covariates, time channels).
+        """
+        n_features = sum(
+            len(x.subset_features) if x.subset_features else x.n_features
+            for x in {k.split("_")[0]: v for k, v in self.features.items()}.values()
+        )
+        n_time_features = sum(
+            self.features[name].n_features for name in self.feature_order if self.features[name].loader == "time"
+        )
+        return n_features - n_time_features, n_time_features
 
 
 class StefBeamBenchmark(StrictModel):
@@ -473,6 +527,70 @@ class GiftEvalBenchmark(StrictModel):
     input_sample_interval_minutes: PositiveInt = Field(15, description="stef beam benchmark sample rate")
 
 
+FEV_BENCH_REF = "v0.10.0"
+"""fev release whose benchmark definition and published baseline results are used by default."""
+FEV_BENCH_URL = f"https://raw.githubusercontent.com/autogluon/fev/{FEV_BENCH_REF}/benchmarks/fev_bench"
+
+
+class FevBenchBenchmark(StrictModel):
+    """fev-bench (Shchur et al., 2025) evaluation through the ``fev`` library.
+
+    Every selected task in ``tasks_file`` is forecast zero-shot with the model under training and scored by
+    ``fev`` (SQL, MASE, WQL, WAPE). Results are written as fev summary CSVs and, when ``baseline_results`` are
+    given, ranked against those published baselines with ``fev.leaderboard`` (skill score and win rate).
+    The task list and the baselines are read from the fev repository at a pinned release by default.
+    """
+
+    tasks_file: str = Field(
+        f"{FEV_BENCH_URL}/tasks.yaml",
+        description="fev benchmark YAML (path or URL): a `tasks:` list of fev.Task definitions.",
+    )
+    task_subset: list[str] | Literal["energy", "all"] = Field(
+        "energy",
+        description="Which tasks of the file to run: 'energy' (the 26 Energy-domain tasks of the fev-bench "
+        "paper), 'all', or an explicit list of `dataset_config` names.",
+    )
+    num_windows: PositiveInt | None = Field(
+        None,
+        description="Override the rolling windows per task for cheaper runs. Changes the task identity, so "
+        "the leaderboard against the published baselines is skipped when set.",
+    )
+    context_window_days: PositiveInt | None = Field(
+        None,
+        description="History handed to the model in days. None uses io.interval_context_limits[rate].max_days, "
+        "i.e. the longest context the model was trained with at that sample rate.",
+    )
+    max_context_samples: PositiveInt | None = Field(
+        None,
+        description="Budget for the total window (history + horizon) handed to the model, in samples. For the "
+        "s4casting models it replaces the longest-trained-window cap (a series shorter than the budget still "
+        "keeps its own length), decoupling the benchmark context from the model.context_window / "
+        "io.interval_context_limits training settings; for a model that declares its own context length "
+        "(Chronos-2: 8192, Timestral: 32768) the smaller of the two applies. None keeps the trained windows "
+        "or the model's own cap.",
+    )
+    model_name: str = Field("s4casting", description="Model name recorded in the fev summaries.")
+    datasets_prefix: str | None = Field(
+        None,
+        description="Local or S3 mirror of autogluon/fev_datasets laid out as <prefix>/<dataset_config>/*.parquet "
+        "(exported as FEV_DATASETS_PREFIX). None downloads from the Hugging Face Hub.",
+    )
+    num_proc: PositiveInt = Field(1, description="Processes used by `datasets` while preparing each task.")
+    baseline_results: list[str] = Field(
+        [f"{FEV_BENCH_URL}/results/seasonal_naive.csv", f"{FEV_BENCH_URL}/results/chronos-2.csv"],
+        description="fev result CSVs (paths or URLs) to rank against; one must contain `baseline_model`.",
+    )
+    baseline_model: str = Field(
+        "Seasonal Naive", description="`model_name` in `baseline_results` that anchors the skill score."
+    )
+    n_resamples: PositiveInt = Field(1000, description="Bootstrap resamples for the leaderboard confidence intervals.")
+    trained_on_datasets: list[str] = Field(
+        [],
+        description="`dataset_config` names that overlap the training corpus; flagged as leakage in the summaries.",
+    )
+    output_dir: str = Field("fev-bench", description="Subdirectory of io.output for the summary CSVs.")
+
+
 class BenchmarkingConfiguration(StrictModel):
     """Shared + named benchmark presets."""
 
@@ -480,8 +598,13 @@ class BenchmarkingConfiguration(StrictModel):
         [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99],
         description="Evaluation quantiles for benchmarking.",
     )
+    batch_size: PositiveInt = Field(
+        64,
+        description="Series per forward pass in every benchmark (local, stef-beam, fev-bench). Benchmarks run "
+        "without gradients, so this can be far larger than training.batch_size; it only trades speed for memory.",
+    )
 
-    benchmarks: dict[str, StefBeamBenchmark | LocalBenchmark | GiftEvalBenchmark] = Field(
+    benchmarks: dict[str, StefBeamBenchmark | LocalBenchmark | GiftEvalBenchmark | FevBenchBenchmark] = Field(
         default_factory=dict,
         description="Dictionary of named benchmark presets.",
     )
@@ -495,13 +618,118 @@ class ValidationConfiguration(StrictModel):
     percentage: PositiveInt = Field(5, description="Percentage for validation.")
 
 
+class CPMConfiguration(StrictModel):
+    """Contiguous Patch Masking (CPM) configuration, after TiRex (Auer et al., 2025).
+
+    Per training sample a block length ``continuous_mask ~ U{continuous_min, ..., continuous_max}`` (in model
+    patches) and a masking probability ``p_mask ~ U(0, p_max)`` are drawn. The context is cut into blocks of
+    ``continuous_mask`` patches and each block of the target series is masked with probability ``p_mask``.
+    Masked blocks are hidden from the model input and added to the loss target, on top of the fixed forecast
+    window at the end of the sample.
+
+    The block-length bounds and the protected leading history are configured as durations and converted to
+    patches per sample rate by :meth:`patches_by_rate`, so multi-rate training masks comparable stretches of
+    history at every rate.
+    """
+
+    p_max: float = Field(
+        0.25,
+        ge=0.0,
+        le=1.0,
+        description="Upper bound of the per-sample block masking probability; p_mask ~ U(0, p_max).",
+    )
+    continuous_max_days: float = Field(
+        2.0,
+        gt=0.0,
+        description="Upper bound of the length of one contiguous mask block, as a duration in days. Converted "
+        "to patches per sample rate (at least one patch): 2 days is 24 patches of 8 at 15 minutes, 6 patches "
+        "at hourly rate and one 8-day patch at daily rate.",
+    )
+    continuous_min_days: float | None = Field(
+        None,
+        gt=0.0,
+        description="Lower bound of the length of one contiguous mask block, as a duration in days; None means "
+        "one patch at every rate.",
+    )
+    min_context_days: float | None = Field(
+        None,
+        ge=0.0,
+        description="Leading history of the sample that CPM never masks, as a duration in days, so under causal "
+        "attention every masked block keeps at least this much visible history to predict from. None means "
+        "no protected history.",
+    )
+    apply_to_validation: bool = Field(
+        False,
+        description="Also apply CPM to the validation set. Off by default so the validation loss "
+        "stays comparable with runs that use the plain 'prediction' task.",
+    )
+
+    @model_validator(mode="after")
+    def _check_bounds(self) -> "CPMConfiguration":
+        """Check that the block length range is well formed.
+
+        The per-field bounds (p_max in [0, 1], durations positive, min_context_days at least 0) are declared
+        on the fields; this is the one cross-field rule. The task dataset relies on this validation and does
+        not re-check the values.
+
+        Raises:
+            ValueError: If continuous_min_days exceeds continuous_max_days.
+
+        Returns:
+            CPMConfiguration: The validated configuration.
+        """
+        if self.continuous_min_days is not None and self.continuous_min_days > self.continuous_max_days:
+            raise ValueError(
+                f"training.cpm.continuous_min_days ({self.continuous_min_days}) must not exceed "
+                f"continuous_max_days ({self.continuous_max_days})."
+            )
+        return self
+
+    def patches_by_rate(self, patch_size: int, sample_intervals_minutes: list[int]) -> dict[int, tuple[int, int, int]]:
+        """Resolve the block-length bounds and the protected history to patches for every sample rate.
+
+        Args:
+            patch_size (int): Model patch size in samples.
+            sample_intervals_minutes (list[int]): Sample rates that will be trained.
+
+        Returns:
+            dict[int, tuple[int, int, int]]: rate -> (continuous_min, continuous_max, min_context_patches).
+        """
+
+        def patches(days: float, rate: int, floor: int) -> int:
+            return max(floor, round(days * 24 * 60 / (rate * patch_size)))
+
+        return {
+            rate: (
+                1 if self.continuous_min_days is None else patches(self.continuous_min_days, rate, 1),
+                patches(self.continuous_max_days, rate, 1),
+                0 if self.min_context_days is None else patches(self.min_context_days, rate, 0),
+            )
+            for rate in sample_intervals_minutes
+        }
+
+
 class TrainingConfiguration(StrictModel):
     """Training configuration."""
 
-    task: Literal["prediction", "masking", "randomprediction"] = Field(
+    task: Literal["prediction", "masking", "randomprediction", "cpm"] = Field(
         "prediction",
         description="Training task : 'prediction' (fixed window), "
-        "'masking' (random masking), or 'randomprediction' (random prediction window percentage).",
+        "'masking' (random masking), 'randomprediction' (random prediction window percentage), "
+        "or 'cpm' (fixed window plus contiguous patch masking of the target inside the context).",
+    )
+    cpm: CPMConfiguration = Field(
+        default_factory=CPMConfiguration,
+        description="Contiguous Patch Masking settings, used when task='cpm'.",
+    )
+    precision: Literal["fp32", "bf16"] = Field(
+        "fp32",
+        description="Mixed precision for the training step: 'fp32' (full precision) or 'bf16' "
+        "(recommended on H100: autocast compute in bfloat16; bf16 keeps fp32's exponent range, so "
+        "no loss scaling is needed). Master weights, normalization statistics and the loss always "
+        "stay fp32, so checkpoints are precision-independent. Only supported for "
+        "model='transformer'; on CPU it silently runs fp32. TF32 matmuls are always enabled on "
+        "CUDA, independent of this setting.",
     )
     max_retries: NonNegativeInt = Field(
         10,
@@ -520,6 +748,73 @@ class TrainingConfiguration(StrictModel):
     )
     iteration: int = Field(1, description="Current iteration number. Set to 0 for zero-shot performance.")
     covariate_dropout: bool = False
+    covariate_dropout_all_p: float = Field(
+        0.0,
+        ge=0.0,
+        le=1.0,
+        description="With covariate_dropout, the probability that a training sample loses every covariate. "
+        "The default draw keeps a uniform random number of covariates, which with many slots almost never "
+        "removes all of them (2.6% with 38 slots), while a third of the fev-bench energy tasks carry none.",
+    )
+    covariate_horizon_dropout_p: float = Field(
+        0.0,
+        ge=0.0,
+        le=1.0,
+        description="With covariate_dropout, the probability that a kept covariate is hidden over (part of) the "
+        "forecast window while staying visible in the context. Half of those draws hide the whole forecast window "
+        "(a past-only covariate, as fev-bench's past_dynamic_columns are presented) and half hide it from a random "
+        "point onward (a forecast that runs out before the horizon does). The context never loses a covariate the "
+        "forecast window keeps, which is the only shape inference produces.",
+    )
+
+
+def validate_covariate_dropout(training: TrainingConfiguration, model: ModelConfiguration) -> None:
+    """Check that covariate dropout is only configured for models that are trained with it.
+
+    Chronos fine-tuning does not support it: the batcher presents a dropped covariate as an all-masked
+    channel, which Chronos-2 attends to as an all-missing variate of its group and which degrades its
+    forecasts. Supporting it would mean dropping such channels inside the wrapper, which is deliberately
+    not done.
+
+    Args:
+        training (TrainingConfiguration): Training configuration.
+        model (ModelConfiguration): Model configuration.
+
+    Raises:
+        ValueError: If covariate dropout is enabled for model='chronos'.
+    """
+    if training.covariate_dropout and model.model == "chronos":
+        raise ValueError(
+            "training.covariate_dropout is not supported for model='chronos': Chronos-2 attends to a dropped "
+            "(all-masked) covariate as an all-missing variate. Fine-tune Chronos with covariate_dropout = false."
+        )
+
+
+def validate_precision(training: TrainingConfiguration, model: ModelConfiguration) -> None:
+    """Check that the configured training precision is supported by the model architecture.
+
+    Mixed precision is only wired for the transformer: the S4 kernel's FFT path and the Mamba
+    selective scan are not validated under autocast, and Chronos manages its own precision.
+
+    Args:
+        training (TrainingConfiguration): Training configuration.
+        model (ModelConfiguration): Model configuration.
+
+    Raises:
+        ValueError: If a half precision is configured for a non-transformer model.
+    """
+    if training.precision != "fp32" and model.model != "transformer":
+        raise ValueError(
+            f"training.precision='{training.precision}' is only supported for model='transformer'; "
+            f"model='{model.model}' must train at fp32."
+        )
+    if model.internal_dtype != DType.Float32:
+        warnings.warn(
+            "model.internal_dtype no longer controls the training precision; use training.precision "
+            "('fp32', 'bf16' or 'fp16') instead.",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 def get_data_range_spans(dataset_dict: DatasetConfiguration) -> tuple[datetime, datetime]:
@@ -592,16 +887,36 @@ class Configuration(BaseSettings):
                     raise ValueError(f"Weather starts later ({wx_min}) than '{name}' ({pq_min})")
                 if wx_max < pq_max:
                     raise ValueError(f"Weather ends earlier ({wx_max}) than '{name}' ({pq_max})")
-        # apply check for prediction mode and prediciton window widths:
-        if self.training.task == "randomprediction":
-            if isinstance(self.model.predict_width, float):
-                raise ValueError("training.task='randomprediction' requires predict_width to be int or list[int].")
-            if isinstance(self.model.predict_width, list) and any(isinstance(x, int) for x in self.model.predict_width):
-                raise ValueError("training.task='randomprediction' requires predict_width to be list[float].")
-        elif self.training.task == "prediction":
-            if isinstance(self.model.predict_width, float):
-                raise ValueError("training.task='prediction' requires predict_width to be int.")
-            if isinstance(self.model.predict_width, list):
-                raise ValueError("training.task='prediction' requires predict_width to be int.")
-
+        validate_precision(self.training, self.model)
+        validate_covariate_dropout(self.training, self.model)
+        # The task/width compatibility checks live in _check_task_configuration, which supersedes
+        # the inline checks the mixed-precision branch carried.
+        self._check_task_configuration()
         return self
+
+    def _check_task_configuration(self) -> None:
+        """Check that the training task and the prediction window width are compatible.
+
+        Raises:
+            ValueError: If predict_width has the wrong type for the configured task.
+        """
+        task = self.training.task
+        predict_width = self.model.predict_width
+        if task == "randomprediction":
+            if isinstance(predict_width, float):
+                raise ValueError("training.task='randomprediction' requires predict_width to be int or list[int].")
+            if isinstance(predict_width, list) and any(isinstance(x, int) for x in predict_width):
+                raise ValueError("training.task='randomprediction' requires predict_width to be list[float].")
+        elif task == "prediction" and not isinstance(predict_width, int):
+            raise ValueError("training.task='prediction' requires predict_width to be int.")
+        elif task == "cpm" and not isinstance(predict_width, int | tuple):
+            raise ValueError("training.task='cpm' requires predict_width to be int or a (min, max) fraction range.")
+
+        if task == "cpm" and self.model.model != "transformer":
+            warnings.warn(
+                "training.task='cpm' is designed for model='transformer', whose patch encoder feeds the mask "
+                f"to the model. With model='{self.model.model}' the masked context patches only reach the model "
+                "through the generic input mask, which has not been validated for CPM.",
+                UserWarning,
+                stacklevel=2,
+            )

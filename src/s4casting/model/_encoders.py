@@ -17,6 +17,9 @@ WEEK = 604_800
 YEAR = int(DAY * 365.25)
 EPOCH_2012 = 1_325_376_000
 NL_CENTER = (52.15, 5.25)
+# Trailing metadata channels the time loader can emit: unix time only, or unix time, latitude, longitude.
+TIME_ONLY = 1
+TIME_AND_LOCATION = 3
 
 
 class SeriesPatchEncoder(nn.Module):
@@ -260,7 +263,7 @@ class TemporalEmbedding(nn.Module):
 
 
 class SpatialEmbedding(nn.Module):
-    """Spatial embedding module."""
+    """Embeds a location's latitude and longitude, relative to the Netherlands."""
 
     def __init__(self, latent_dim: int):
         """Initialize the SpatialEmbedding.
@@ -277,46 +280,52 @@ class SpatialEmbedding(nn.Module):
         """Forward pass of the SpatialEmbedding.
 
         Args:
-            latlon (torch.Tensor): Latitude and longitude tensor of shape (batch_size, 2).
+            latlon (torch.Tensor): Latitude and longitude tensor of shape (batch_size, 1, 2).
 
         Returns:
-            torch.Tensor: Spatial embeddings of shape (batch_size x 1 x n_embd).
+            torch.Tensor: Spatial embeddings of shape (batch_size, 1, latent_dim).
         """
-        if latlon is None:
-            return torch.zeros(self.latent_dim, device=self.geo_means.device)  # n_embd
-
-        return self.proj(latlon - torch.tensor(NL_CENTER, device=latlon.device))  # B x 1 x n_embd
+        return self.proj(latlon - torch.tensor(NL_CENTER, device=latlon.device))
 
 
-class SeperateLocTime(nn.Module):
-    """Adds temporal and spatial embeddings to the encoded patches."""
+class SeperateTime(nn.Module):
+    """Adds the embeddings of the trailing time channels to the encoded patches.
 
-    def __init__(self, encoder):
-        """Initialize the SeperateLocTime.
+    With one time channel (unix time) only the temporal embedding is added; with three (unix time,
+    latitude, longitude) the spatial embedding of the location is added as well.
+    """
+
+    def __init__(self, encoder, n_time_features: int = TIME_ONLY):
+        """Initialize the SeperateTime.
 
         Args:
             encoder: Patch encoder instance.
+            n_time_features (int): Trailing time channels of the input, ``TIME_ONLY`` or ``TIME_AND_LOCATION``.
         """
         super().__init__()
+        if n_time_features not in (TIME_ONLY, TIME_AND_LOCATION):
+            raise ValueError(f"n_time_features must be {TIME_ONLY} or {TIME_AND_LOCATION}, got {n_time_features}.")
         self.latent_dim = encoder.latent_dim
         self.patch_size = encoder.patch_size
+        self.n_time_features = n_time_features
         self.temp_enc = TemporalEmbedding(encoder.patch_size, encoder.latent_dim)
-        self.spat_enc = SpatialEmbedding(encoder.latent_dim)
+        self.spat_enc = SpatialEmbedding(encoder.latent_dim) if n_time_features == TIME_AND_LOCATION else None
         self.encoder = encoder
 
     def forward(self, x, sample_rate_conversion_factor, patch_size):
-        """Forward pass of the SeperateLocTime.
+        """Forward pass of the SeperateTime.
 
         Args:
-            x (torch.Tensor): Input tensor of shape (batch_size, seq_len, n_features + 3).
+            x (torch.Tensor): Input tensor of shape (batch_size, seq_len, n_features + n_time_features); the
+                trailing channels are unix time and, when present, latitude and longitude.
             sample_rate_conversion_factor (float): convert between base sample rate.
             patch_size (int): how many samples per patch.
 
         Returns:
             torch.Tensor: Encoded tensor of shape (batch_size, n_patches, latent_dim).
         """
-        return (
-            self.encoder(x[:, :, :-3], sample_rate_conversion_factor, patch_size)
-            + self.temp_enc(x[:, :, -3])
-            + self.spat_enc(x[:, -1:, -2:])
-        )
+        n = self.n_time_features
+        out = self.encoder(x[:, :, :-n], sample_rate_conversion_factor, patch_size) + self.temp_enc(x[:, :, -n])
+        if self.spat_enc is not None:
+            out = out + self.spat_enc(x[:, -1:, -2:])
+        return out

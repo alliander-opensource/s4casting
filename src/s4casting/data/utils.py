@@ -14,6 +14,7 @@ def build_valid_context_sampling_pairs(
     sample_intervals_minutes=(5, 10, 15, 30, 60, 1440, 10080),
     min_points=32,
     max_context_len=None,
+    patch_size=None,
     interval_context_limits={
         5: {"min_days": 7, "max_days": 10},
         10: {"min_days": 7, "max_days": 14},
@@ -37,6 +38,7 @@ def build_valid_context_sampling_pairs(
       - the sample count is an integer
       - sample count >= min_points
       - sample count <= max_context_samples (if max_context_samples is provided)
+      - sample count is a multiple of patch_size (if patch_size is provided)
       - it satisfies optional manual pruning rules in interval_context_limits
 
     Args:
@@ -44,6 +46,9 @@ def build_valid_context_sampling_pairs(
         sample_intervals_minutes: iterable of allowed sample intervals in minutes
         min_points: minimum raw sample count required
         max_context_len: fixed padded input length; if None, inferred from valid pairs
+        patch_size: model patch size in samples; pairs whose sample count is not a multiple of it are
+            skipped, since a patch encoder cannot cut such a sequence into whole patches (364 days at a
+            weekly rate is 52 samples, not a multiple of 8)
         interval_context_limits: optional dict of the form
             {
                 5:     {"min_days": 7,   "max_days": 10},
@@ -101,6 +106,14 @@ def build_valid_context_sampling_pairs(
                 warnings.warn(
                     f"Skipping ({days}d, {interval_minutes}min): {points} points exceeds max_context_len "
                     f"of {max_context_len}.",
+                    stacklevel=2,
+                )
+                continue
+
+            if patch_size is not None and points % patch_size:
+                warnings.warn(
+                    f"Skipping ({days}d, {interval_minutes}min): {points} points is not a multiple of the "
+                    f"patch size {patch_size}.",
                     stacklevel=2,
                 )
                 continue

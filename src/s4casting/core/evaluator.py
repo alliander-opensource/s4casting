@@ -61,7 +61,11 @@ class Evaluator:
             output_interval = select_rate(
                 sample_config.sample_interval_minutes, model_config.output_sample_intervals_minutes
             )
-            prediction, loss = evaluation_model(X, Xm, sample_config.sample_interval_minutes, output_interval, Y, Ym)
+            # Validate at the training precision so the validation loss tracks what is optimized.
+            with context.machine.autocast(context.configuration.training.precision):
+                prediction, loss = evaluation_model(
+                    X, Xm, sample_config.sample_interval_minutes, output_interval, Y, Ym
+                )
 
             context.validation_loss = loss.item()
             context.input_validation_sample_rate = sample_config.sample_interval_minutes[0].item()

@@ -23,6 +23,7 @@ from s4casting.inference.onnx_export import (
     count_input_features,
     example_inputs,
     export_onnx,
+    horizon_length,
     read_metadata,
     sequence_length,
 )
@@ -108,6 +109,27 @@ def test_export_without_checkpoint_is_shaped_correctly(transformer_config: Confi
         transformer_config.model.output_head.n_gaussians,
         3,
     )
+
+
+def test_fraction_range_predict_width_uses_the_upper_bound(transformer_config: Configuration) -> None:
+    """A ``(min, max)`` predict_width yields an example horizon of max * sequence length.
+
+    Models trained under the ``cpm`` and ``randomprediction`` tasks express the horizon as a
+    fraction range, so the export must not treat it as days.
+
+    Args:
+        transformer_config: Small transformer configuration.
+    """
+    transformer_config.model.predict_width = (0.05, 0.3)
+    steps = sequence_length(transformer_config.model)
+
+    assert horizon_length(transformer_config.model) == int(steps * 0.3)
+
+    x, xm = example_inputs(transformer_config)
+    masked = (xm[0, :, 0] == 0).sum().item()
+
+    assert x.shape[1] == steps
+    assert masked == int(steps * 0.3)
 
 
 def test_metadata_describes_the_outputs(transformer_config: Configuration, tmp_path: pathlib.Path) -> None:
