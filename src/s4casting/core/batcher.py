@@ -457,14 +457,13 @@ class Batcher:
         return train, validation, benchmark
 
     def update_sampler_epoch(self, context: Context, _iteration: int | None) -> None:  # type: ignore
-        """Update the epoch for the distributed sampler.
+        """Update the epoch for the training sampler, for single-process and DDP training alike.
 
         Args:
             context (Context): Training context.
             _iteration (int | None): Current training iteration. (Unused)
         """
-        if context.machine.ddp:
-            self.train_loader.batch_sampler.set_epoch(context.trainer.epoch)  # type: ignore
+        self.train_loader.batch_sampler.set_epoch(context.trainer.epoch)  # type: ignore
 
     def create_data_loaders(
         self, train_config: TrainingConfiguration, machine: Machine, run_config: RunConfiguration

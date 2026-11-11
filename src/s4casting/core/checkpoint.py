@@ -75,25 +75,28 @@ class Checkpointer:
 
         # A checkpoint trained with location (time loader include_location = true) carries a spatial
         # embedding that a time-only model has no slot for; those weights are not fed by time-only inputs,
-        # so drop them rather than refuse the checkpoint.
+        # so drop them rather than refuse the checkpoint. The saved optimizer state is laid out for the
+        # original parameter list and no longer fits, so this becomes a warm start with a fresh optimizer.
         model_keys = set(context.model_container.model.state_dict())
         legacy = [k for k in state_dict if (".spat_enc." in k or "spatial_embedding." in k) and k not in model_keys]
         if legacy:
             warnings.warn(
-                f"Dropping {len(legacy)} spatial-embedding tensor(s) from a checkpoint trained with location.",
+                f"Dropping {len(legacy)} spatial-embedding tensor(s) from a checkpoint trained with location; "
+                "the optimizer state is not restored and starts fresh.",
                 UserWarning,
                 stacklevel=2,
             )
             state_dict = {k: v for k, v in state_dict.items() if k not in legacy}
 
         context.model_container.model.load_state_dict(state_dict)
-        context.optimizer.load_state_dict(
-            torch.load(
-                io.BytesIO(checkpoint["torch_optimizer"]),
-                map_location=context.machine.torch_device,
-                weights_only=True,
+        if not legacy:
+            context.optimizer.load_state_dict(
+                torch.load(
+                    io.BytesIO(checkpoint["torch_optimizer"]),
+                    map_location=context.machine.torch_device,
+                    weights_only=True,
+                )
             )
-        )
 
         context.model_container.model.to(context.machine.torch_device)
 

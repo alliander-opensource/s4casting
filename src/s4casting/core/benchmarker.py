@@ -38,8 +38,12 @@ class Benchmarker:
         self.head_evaluator = head_evaluator
         self.hooks = hookable
         self.hooks.finished.register(self.finished)
+        self._last_benchmarked: int | None = None
 
         if isinstance(self.hooks, TrainingHooks):
+            # the training loop fires the benchmark hooks together, so tracking one of them is enough
+            self.hooks.benchmark.register(self._mark_benchmarked)
+
             # check which benchmarks to run
             if bench_config.benchmarks.get("LocalBenchmark") is not None:
                 self.hooks.benchmark.register(self.benchmark)
@@ -50,21 +54,34 @@ class Benchmarker:
             if bench_config.benchmarks.get("FevBenchBenchmark") is not None:
                 self.hooks.fev_bench.register(run_fevbench)
 
-    def finished(self, context: Context) -> None:
-        """Score the final checkpoint when the last step did not fall on a benchmarking interval.
+    def _mark_benchmarked(self, _context: Context, iteration: int) -> None:
+        """Remember the last iteration the benchmark hooks fired for.
 
-        Fires the same hooks the training loop fires at an interval; only the configured benchmarks are
-        registered on them, so nothing else runs. A last step the loop already benchmarked (including a
-        zero-shot run, benchmarked at iteration 0) is not scored twice.
+        Args:
+            _context (Context): Training context. (Unused)
+            iteration (int): Iteration being benchmarked.
+        """
+        self._last_benchmarked = iteration
+
+    def finished(self, context: Context) -> None:
+        """Score the final model unless the training loop already benchmarked it.
+
+        The loop benchmarks before a training step, so the model after the last step is never scored
+        there, even when ``maximum_steps`` falls on a benchmarking interval. Fires the same hooks the
+        loop fires at an interval; only the configured benchmarks are registered on them, so nothing
+        else runs. A final iteration that was already benchmarked (a zero-shot run, benchmarked at
+        iteration 0) is not scored twice.
 
         Args:
             context (Context): Training context.
         """
-        training = context.configuration.training
-        if not isinstance(self.hooks, TrainingHooks) or training.maximum_steps % training.benchmarking_interval == 0:
+        if not isinstance(self.hooks, TrainingHooks):
+            return
+        final_iteration = context.configuration.training.maximum_steps
+        if self._last_benchmarked == final_iteration:
             return
         for hook in (self.hooks.benchmark, self.hooks.stef_beam, self.hooks.fev_bench):
-            hook.call(context, training.maximum_steps)
+            hook.call(context, final_iteration)
 
     def sample_dataset(self, location: str, context: Context):
         """Samples location at a specific sample rate.
