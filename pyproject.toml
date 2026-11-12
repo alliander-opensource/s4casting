@@ -19,7 +19,7 @@ dependencies = [
     "torch>=2.2.2",
     "pandas>=2.2.2",
     "pyarrow>=16.1.0",
-    "pykeops==2.2.3",
+    "pykeops==2.3",
     "wandb>=0.16.6,<1",
     "mlflow>=3.16",
     "pydantic>=2.7.2",
