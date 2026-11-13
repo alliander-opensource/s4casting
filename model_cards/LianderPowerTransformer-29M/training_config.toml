@@ -115,7 +115,7 @@ loader = "croissant"
 # The public LianderPower release ships 4 of them; the full set used here will be
 # published at the same location as the dataset.
 [io.features.weather]
-location = "data/weather_openmeteo.json"
+location = "data/weather_test_cov.json"
 loader = "parquet"
 nearest_neighbor = true
 subset_features = [
