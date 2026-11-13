@@ -1,0 +1,147 @@
+# SPDX-FileCopyrightText: Contributors to the s4casting project
+#
+# SPDX-License-Identifier: MPL-2.0
+
+# Exact training configuration of LianderPowerTransformer-29M (checkpoint_500000).
+# Hyperparameters are unchanged from the training run. Only the data locations and the
+# benchmark model name were edited: paths point at the public LianderPower release and
+# the weather covariate file that will be published alongside it, and keys that the
+# loaders no longer need (weather n_features, time n_features) were dropped in favour of
+# their current equivalents. Validated against the code release by the packaging script.
+
+[machine]
+device_kind = "cuda"
+
+[run]
+seed = 42069
+
+[training]
+task = "cpm"
+precision = "bf16"
+covariate_dropout = true
+covariate_horizon_dropout_p = 0.3
+batch_size = 16
+gradient_accumulation_steps = 1
+evaluation_interval = 10_000
+checkpoint_interval = 10_000
+benchmarking_interval = 10_000
+maximum_steps = 2_000_000
+
+[training.cpm]
+p_max = 0.25
+continuous_max_days = 2
+min_context_days = 2
+apply_to_validation = false
+
+[model]
+context_window = [21, 32, 64, 128, 256, 364, 448, 512]
+predict_width = [0.05, 0.3]
+base_sample_interval_minutes = 15
+input_sample_intervals_minutes = [10, 15, 30, 60, 1440, 10080]
+output_sample_intervals_minutes = [10, 15, 30, 60, 1440, 10080]
+alignment = 1440
+model = "transformer"
+norm_clamp = 10
+norm_eps = 0.0001
+
+[model.loss]
+loss = "nll"
+alpha_clip = 0.1
+mask_mode = "masked"
+sigma_regularisation_factor = 0
+
+[model.transformer]
+latent_dim = 512
+n_heads = 8
+n_layers = 6
+dropout = 0
+attn_bias = true
+mlp_layers = 2
+causal = true
+
+[model.output_head]
+arch = "gmm"
+n_gaussians = 4
+quantile_values = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+
+[model.patch_encoder]
+arch = "linear"
+n_layers = 4
+patch_size = 8
+
+[model.patch_decoder]
+arch = "linear"
+patch_size = 8
+
+[benchmarking]
+eval_quantiles = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+batch_size = 64
+
+[benchmarking.benchmarks.StefBeamBenchmark]
+targets_file = "liander2024_targets.yaml"
+context_window_days = 32
+predict_window_days = 2
+input_sample_interval_minutes = 15
+
+[benchmarking.benchmarks.FevBenchBenchmark]
+model_name = "LianderPowerTransformer-29M"
+datasets_prefix = "data/fev_datasets/"
+task_subset = "energy"
+max_context_samples = 8192
+
+[optimizer]
+learning_rate = 3e-5
+weight_decay = 0
+gradient_clipping = 1
+
+[io]
+feature_order = ["measurements_cdb", "weather", "time"]
+output = "out/"
+
+# Context windows allowed per sample rate, in days.
+[io.interval_context_limits]
+10 = { min_days = 7, max_days = 56 }
+15 = { min_days = 11, max_days = 85 }
+30 = { min_days = 16, max_days = 170 }
+60 = { min_days = 16, max_days = 365 }
+1440 = { min_days = 112, max_days = 1792 }
+10080 = { min_days = 224, max_days = 1792 }
+
+[io.features.measurements_cdb]
+location = "data/LianderPower/"
+loader = "croissant"
+
+# 17 Open-Meteo variables matched to each measurement location by nearest neighbour.
+# The public LianderPower release ships 4 of them; the full set used here will be
+# published at the same location as the dataset.
+[io.features.weather]
+location = "data/weather_openmeteo.json"
+loader = "parquet"
+nearest_neighbor = true
+subset_features = [
+    "temperature_2m",
+    "relative_humidity_2m",
+    "dew_point_2m",
+    "precipitation",
+    "rain",
+    "snow_depth",
+    "pressure_msl",
+    "surface_pressure",
+    "cloud_cover",
+    "et0_fao_evapotranspiration",
+    "vapour_pressure_deficit",
+    "wind_speed_100m",
+    "shortwave_radiation",
+    "direct_radiation",
+    "diffuse_radiation",
+    "direct_normal_irradiance",
+    "terrestrial_radiation",
+]
+
+# Unix time only: the model derives time-of-day, day-of-week and day-of-year embeddings
+# from it. No location coordinates are used.
+[io.features.time]
+location = ""
+loader = "time"
+main_dataset = "measurements_cdb"
+include_location = false
