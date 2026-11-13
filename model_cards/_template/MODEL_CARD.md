@@ -69,7 +69,6 @@ toolkit](https://github.com/alliander-opensource/s4casting) on the [<dataset>](<
 | Model weights licence | MPL-2.0 (`LICENSE` in the release) |
 | Source code licence | MPL-2.0 (S4Casting repository) |
 | Training dataset licence | <DATASET_LICENCES> <!-- one entry per dataset, e.g. LianderPower CC BY 4.0 --> |
-| Hub revision | `<HUB_REVISION>` <!-- fill in after upload; pins the release --> |
 
 ## Intended use
 
