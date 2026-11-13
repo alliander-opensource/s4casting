@@ -68,8 +68,11 @@ tagged commit of the code.
    change that geometry, and `--fixed-time` freezes the time axis instead.
 
 4. Upload. Either add `--push <org>/<name>` to the command above, with a Hub token in the
-   environment, or upload the folder by hand. Record the resulting Hub revision hash in
-   the model card's provenance table.
+   environment, or upload the folder by hand. The upload is a Hub commit and its hash
+   is the release's Hub revision. It is not written into the model card: the card is
+   part of that upload and covered by its checksums, so it cannot contain the hash of
+   its own commit. The Hub's commit history holds it; note it in the release notes of
+   the code tag if a record in this repository is wanted.
 
 The safetensors file is reproducible: packaging the same checkpoint on the same tag
 yields byte-identical weights, so anyone can re-package from the tag and compare hashes.
