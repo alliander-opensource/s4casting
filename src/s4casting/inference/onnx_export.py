@@ -378,7 +378,9 @@ def build_model(config: Configuration, checkpoint_path: str | None = None) -> nn
     return model.eval()
 
 
-def example_inputs(config: Configuration, batch_size: int = 2) -> tuple[torch.Tensor, torch.Tensor]:
+def example_inputs(
+    config: Configuration, batch_size: int = 2, *, steps: int | None = None, horizon: int | None = None
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Build example inputs shaped like a real inference request.
 
     The mask zeroes the target channel over the forecast horizon, which is what marks
@@ -391,12 +393,14 @@ def example_inputs(config: Configuration, batch_size: int = 2) -> tuple[torch.Te
     Args:
         config (Configuration): Loaded configuration.
         batch_size (int): Batch size of the example inputs.
+        steps (int | None): Sequence length; defaults to the configured one.
+        horizon (int | None): Forecast steps masked at the end; defaults to the configured one.
 
     Returns:
         tuple[torch.Tensor, torch.Tensor]: The example (x, xm) pair.
     """
-    steps = sequence_length(config.model)
-    horizon = horizon_length(config.model)
+    steps = sequence_length(config.model) if steps is None else steps
+    horizon = horizon_length(config.model) if horizon is None else horizon
     features = count_input_features(config.io)
 
     x = torch.randn(batch_size, steps, features)
@@ -476,6 +480,8 @@ def export_onnx(
     opset_version: int = DEFAULT_OPSET,
     with_quantiles: bool = False,
     verify: bool = True,
+    verify_steps: int | None = None,
+    verify_horizon: int | None = None,
 ) -> tuple[pathlib.Path, dict[int, float]]:
     """Export a configured model to an ONNX file.
 
@@ -493,10 +499,16 @@ def export_onnx(
             derived from the mixture parameters, so consumers need no post-processing.
             Ignored for a quantile head, whose output already is quantiles.
         verify (bool): Compare the exported graph against PyTorch before returning.
+        verify_steps (int | None): Sequence length to verify at instead of the traced one.
+            Requires ``dynamic_time``; a length other than the traced one is what shows
+            that the time axis really is dynamic.
+        verify_horizon (int | None): Forecast steps masked in the verification inputs;
+            defaults to the configured horizon.
 
     Raises:
         NotImplementedError: If the configured architecture cannot be exported.
         RuntimeError: If the exporter returns no program.
+        ValueError: If ``verify_steps`` is given for a fixed time axis.
 
     Returns:
         tuple[pathlib.Path, dict[int, float]]: The path written, and the maximum absolute
@@ -504,6 +516,8 @@ def export_onnx(
     """
     configuration = load_configuration(config)
     check_export_supported(configuration)
+    if verify_steps is not None and not dynamic_time:
+        raise ValueError("verify_steps needs dynamic_time: a fixed time axis only accepts the traced length.")
 
     model = build_model(configuration)
     checkpoint_metadata = load_checkpoint_weights(model, checkpoint_path) if checkpoint_path else {}
@@ -556,7 +570,11 @@ def export_onnx(
     destination.parent.mkdir(parents=True, exist_ok=True)
     program.save(str(destination), external_data=external_data)
 
-    deviations = verify_onnx(str(destination), wrapper, configuration) if verify else {}
+    deviations = (
+        verify_onnx(str(destination), wrapper, configuration, steps=verify_steps, horizon=verify_horizon)
+        if verify
+        else {}
+    )
     return destination, deviations
 
 
@@ -567,6 +585,8 @@ def verify_onnx(
     *,
     batch_sizes: tuple[int, ...] = (1, 3),
     tolerance: float = 1e-4,
+    steps: int | None = None,
+    horizon: int | None = None,
 ) -> dict[int, float]:
     """Check an exported graph against the PyTorch module it came from.
 
@@ -584,6 +604,10 @@ def verify_onnx(
         config (Configuration): The configuration used for the export.
         batch_sizes (tuple[int, ...]): Batch sizes to compare, exercising the dynamic axis.
         tolerance (float): Maximum tolerated absolute deviation.
+        steps (int | None): Sequence length of the comparison inputs; defaults to the
+            configured, traced length.
+        horizon (int | None): Forecast steps masked in the comparison inputs; defaults to
+            the configured horizon.
 
     Returns:
         dict[int, float]: Maximum absolute deviation per batch size.
@@ -598,7 +622,7 @@ def verify_onnx(
 
     deviations: dict[int, float] = {}
     for batch_size in batch_sizes:
-        x, xm = example_inputs(config, batch_size=batch_size)
+        x, xm = example_inputs(config, batch_size=batch_size, steps=steps, horizon=horizon)
 
         with torch.no_grad():
             expected = wrapper(x.clone(), xm.clone())

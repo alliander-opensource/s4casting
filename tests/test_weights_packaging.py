@@ -186,6 +186,8 @@ def test_package_builds_a_complete_verifiable_release(
     manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["code"]["tag"] == "v0.0.0-test"
     assert manifest["checkpoint"]["iteration"] == "1234"
+    assert manifest["onnx"]["dynamic_time"] is True
+    assert manifest["onnx"]["verified_sequence_length"] is None  # --no-verify
     assert manifest["files"]["tiny.safetensors"]["sha256"] == sha256_file(folder / "tiny.safetensors")
     _, metadata = read_safetensors(str(folder / "tiny.safetensors"))
     assert metadata["s4casting.code_tag"] == "v0.0.0-test"

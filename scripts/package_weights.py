@@ -6,7 +6,7 @@
 Turns a training checkpoint into the complete, verifiable asset set of a weights release:
 
 - ``<name>.safetensors``   model weights only, no optimizer state, no pickle
-- ``<name>.onnx``          exported from that safetensors file, verified against PyTorch
+- ``<name>.onnx``          exported from that safetensors file with a dynamic time axis, verified against PyTorch
 - ``training_config.toml`` the exact configuration the model was trained with
 - ``README.md``            the model card, published unchanged from ``model_cards/<name>/MODEL_CARD.md``
 - ``LICENSE``              the licence the weights are released under (MPL-2.0)
@@ -45,6 +45,13 @@ warnings.filterwarnings("ignore")
 
 # A release name becomes a directory and file names: letters, digits, dot, dash and
 # underscore only, so a CLI argument can never point outside the output directory.
+# The ONNX graph is released with a dynamic time axis and compared against PyTorch on the
+# geometry of the Liander2024 benchmark: 30 days of context and a 2-day forecast at 15
+# minutes. That is not the length the graph is traced at, so passing shows the time axis
+# is dynamic in fact and not only in the signature.
+LIANDER2024_STEPS = 32 * 96
+LIANDER2024_HORIZON = 2 * 96
+
 RELEASE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 
@@ -100,6 +107,24 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--allow-untagged", action="store_true", help="Package although HEAD carries no tag.")
     ap.add_argument("--allow-dirty", action="store_true", help="Package although the checkout has changes.")
     ap.add_argument("--no-verify", action="store_true", help="Skip comparing the ONNX graph against PyTorch.")
+    ap.add_argument(
+        "--fixed-time",
+        action="store_true",
+        help="Freeze the ONNX time axis at the configured sequence length instead of keeping it dynamic.",
+    )
+    ap.add_argument(
+        "--verify-steps",
+        type=int,
+        default=LIANDER2024_STEPS,
+        help="Sequence length the dynamic ONNX graph is compared against PyTorch at "
+        "(default: the Liander2024 window, 32 days at 15 minutes).",
+    )
+    ap.add_argument(
+        "--verify-horizon",
+        type=int,
+        default=LIANDER2024_HORIZON,
+        help="Forecast steps masked at the end of the verification inputs (default: 2 days at 15 minutes).",
+    )
     ap.add_argument("--push", metavar="REPO_ID", help="Upload the folder to this Hugging Face model repo.")
     return ap.parse_args(argv)
 
@@ -178,8 +203,12 @@ def package(args: argparse.Namespace) -> pathlib.Path:
         str(out / f"{out.name}.onnx"),
         checkpoint_path=str(weights_out),
         with_quantiles=True,
+        dynamic_time=not args.fixed_time,
         verify=not args.no_verify,
+        verify_steps=None if args.fixed_time else args.verify_steps,
+        verify_horizon=None if args.fixed_time else args.verify_horizon,
     )
+    verified = not args.no_verify
 
     if args.model_card:
         # A model repository's README.md is the model card; shipping a second copy under
@@ -202,7 +231,13 @@ def package(args: argparse.Namespace) -> pathlib.Path:
             "loss": metadata.get("s4casting.checkpoint_loss"),
             "n_parameters": metadata.get("s4casting.n_parameters"),
         },
-        "onnx": {"file": onnx_out.name, "max_abs_deviation_from_pytorch": deviations},
+        "onnx": {
+            "file": onnx_out.name,
+            "dynamic_time": not args.fixed_time,
+            "verified_sequence_length": (None if args.fixed_time else args.verify_steps) if verified else None,
+            "verified_horizon": (None if args.fixed_time else args.verify_horizon) if verified else None,
+            "max_abs_deviation_from_pytorch": deviations,
+        },
         "files": {p.name: {"sha256": sha256_file(p), "bytes": p.stat().st_size} for p in sorted(assets)},
     }
     with (out / MANIFEST_FILENAME).open("w", encoding="utf-8") as handle:
