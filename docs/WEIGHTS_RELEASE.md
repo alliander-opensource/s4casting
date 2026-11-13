@@ -16,11 +16,11 @@ tagged commit of the code.
 | File | Content |
 |---|---|
 | `<name>.safetensors` | Model weights only. No optimizer state, no pickle: safetensors cannot execute code on load. The header records the code tag, commit, checkpoint iteration and loss, and the SHA-256 of the training configuration. |
-| `<name>.onnx` | Exported from that safetensors file by the released code, with a second `quantiles` output, and verified against PyTorch before packaging. |
+| `<name>.onnx` | Exported from that safetensors file by the released code, with a second `quantiles` output and a dynamic time axis, and verified against PyTorch before packaging. |
 | `training_config.toml` | The exact configuration the model was trained with, validated against the code release. |
 | `README.md` | The model card, published unchanged from `model_cards/<name>/MODEL_CARD.md`. A model repository's `README.md` is its model card, so only that copy ships. |
 | `LICENSE` | The licence the weights are released under: MPL-2.0, the same as the code. |
-| `manifest.json` | Name, code tag and commit, s4casting version, checkpoint provenance, ONNX deviation from PyTorch, and the SHA-256 and size of every file. |
+| `manifest.json` | Name, code tag and commit, s4casting version, checkpoint provenance, ONNX deviation from PyTorch and the sequence length it was measured at, and the SHA-256 and size of every file. |
 | `checksums.sha256` | SHA-256 of every file above, in `sha256sum` format. |
 
 ## Where things live
@@ -61,8 +61,11 @@ tagged commit of the code.
 
    Run this from the repository root: the output directory must lie inside the working
    directory. This writes `out/weights/<name>/` with every file
-   listed above and prints their checksums. The ONNX export is verified against PyTorch as part of
-   this step; a deviation above 1e-4 aborts the packaging.
+   listed above and prints their checksums. The ONNX graph is exported with a dynamic time
+   axis and compared against PyTorch as part of this step, on the Liander2024 geometry
+   (3072 steps at 15 minutes, the last 192 forecast) rather than the length it was traced
+   at; a deviation above 1e-4 aborts the packaging. `--verify-steps` and `--verify-horizon`
+   change that geometry, and `--fixed-time` freezes the time axis instead.
 
 4. Upload. Either add `--push <org>/<name>` to the command above, with a Hub token in the
    environment, or upload the folder by hand. Record the resulting Hub revision hash in

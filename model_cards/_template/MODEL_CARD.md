@@ -161,7 +161,9 @@ against baselines when they exist, and say so when they do not. -->
 
 **Implementation parity.** The ONNX shipped with this release agrees with the
 PyTorch model loaded with these weights to within <ONNX_MAX_DEVIATION> on identical
-inputs <!-- manifest.json: onnx.max_abs_deviation_from_pytorch -->.
+inputs <!-- manifest.json: onnx.max_abs_deviation_from_pytorch -->, compared at
+<VERIFIED_SEQUENCE_LENGTH> steps <!-- manifest.json: onnx.verified_sequence_length -->.
+The time axis of the ONNX graph is dynamic; parity was not measured at other lengths.
 
 ## Known limitations
 

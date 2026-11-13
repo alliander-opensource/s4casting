@@ -315,6 +315,31 @@ def test_time_axis_can_be_dynamic(transformer_config: Configuration, tmp_path: p
         assert not np.isnan(prediction).any()
 
 
+def test_dynamic_time_axis_matches_pytorch_at_another_length(
+    transformer_config: Configuration, tmp_path: pathlib.Path
+) -> None:
+    """A dynamic graph is verified at a length other than the traced one, and a fixed one cannot be.
+
+    Args:
+        transformer_config: Small transformer configuration.
+        tmp_path: Pytest temporary directory.
+    """
+    patch_size = transformer_config.model.patch_encoder.patch_size
+    steps = sequence_length(transformer_config.model) + 16 * patch_size
+    _, deviations = export_onnx(
+        transformer_config,
+        str(tmp_path / "model.onnx"),
+        dynamic_time=True,
+        verify_steps=steps,
+        verify_horizon=4 * patch_size,
+    )
+    assert deviations
+    assert max(deviations.values()) < 1e-4
+
+    with pytest.raises(ValueError, match="dynamic_time"):
+        export_onnx(transformer_config, str(tmp_path / "fixed.onnx"), verify_steps=steps)
+
+
 def test_time_axis_rejects_a_partial_patch(transformer_config: Configuration, tmp_path: pathlib.Path) -> None:
     """A length that is not a whole number of patches is refused, not silently mangled.
 
