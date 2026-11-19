@@ -331,7 +331,7 @@ wheels = [
 
 [[package]]
 name = "chronos-forecasting"
-version = "2.3.1"
+version = "2.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "accelerate" },
@@ -341,9 +341,9 @@ dependencies = [
     { name = "torch" },
     { name = "transformers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a6/71/609ff332069de0580a8a1fa357558975a91be786d612ce179c2797a00a52/chronos_forecasting-2.3.1.tar.gz", hash = "sha256:785116f3f10aaac44a315700c5e4de71a5fe6385c9c771722d688f402fe75083", size = 726426, upload-time = "2026-07-02T08:22:58.672Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/0e/f205d4a1841e3740045c40e9e8caeff584937eb561831144ca7b93a29d49/chronos_forecasting-2.3.2.tar.gz", hash = "sha256:910b0891310b74598a937bb9fe8447ea16393bcc2e1ad8d328c1f8099f909201", size = 727068, upload-time = "2026-09-08T14:07:21.477Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/50/41e712bb9fa93a2d4cb18e68f2667e544d46750756c808fe754180e8aba2/chronos_forecasting-2.3.1-py3-none-any.whl", hash = "sha256:d9d00ec9b1621235bfb26685638bf054885f4c000863678f1c775dfab2697496", size = 80559, upload-time = "2026-07-02T08:22:57.296Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/c9/c9e1363d55ac569e9b09b98d66b342ada5530a26624f45ea7e2f9e4131a9/chronos_forecasting-2.3.2-py3-none-any.whl", hash = "sha256:0f0d9a1972f252d6cf584b9fa749bd1b389b3c1cf05a889c4130cb10652c2117", size = 80769, upload-time = "2026-09-08T14:07:20.138Z" },
 ]
 
 [[package]]
