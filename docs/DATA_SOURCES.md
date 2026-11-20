@@ -56,6 +56,16 @@ weather = load_weather_from_croissant(Path("data/LianderPower"))
 
 The adapter rebuilds the flat memmap-backed layout that the rest of the pipeline expects (`NumpyData`, `IntervalDataset`, `TimeseriesDataset`), so downstream code runs unchanged.
 
+### Weather covariates in the data release and the model release
+
+The public LianderPower data release currently ships 4 Open-Meteo weather variables:
+temperature, wind speed at 100 m, shortwave radiation and direct-normal irradiance. The
+released LianderPowerTransformer-29M model was trained on 17 Open-Meteo variables, listed
+in its [model card](../model_cards/LianderPowerTransformer-29M/MODEL_CARD.md). The
+remaining 13 variables will be added to the data release as soon as possible. Until then
+they can be regenerated from the Open-Meteo historical weather API with
+`src/s4casting/data/preparation/weather.py`.
+
 ## Loading External Data (Optional)
                                                                                                                                                   
 You can integrate data from external providers as long as it follows the same structure used by the core dataset:                                 
