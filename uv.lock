@@ -170,6 +170,15 @@ wheels = [
 ]
 
 [[package]]
+name = "array-api-compat"
+version = "1.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/88/d7b0f89b1ad0f42ef94b8440fff87b7c0b69701b3c30a5b160fdbc850f25/array_api_compat-1.16.0.tar.gz", hash = "sha256:c8117cb4d6c7aacaec38c2705f72509e342c20b1a716a04cb5397a611f122d51", size = 134991, upload-time = "2026-10-25T18:37:17.582Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/09/cab56a48b7e83609831c96f36658f9e30421877875071f2413eb591cf756/array_api_compat-1.16.0-py3-none-any.whl", hash = "sha256:0464934d7d5f1e9b728b2e248da52400630b1fcb46b70073eab3c7ae084290aa", size = 81744, upload-time = "2026-10-25T18:37:15.934Z" },
+]
+
+[[package]]
 name = "asttokens"
 version = "3.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3170,15 +3179,16 @@ wheels = [
 
 [[package]]
 name = "scoringrules"
-version = "0.11.0"
+version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "array-api-compat" },
     { name = "numpy" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e2/2c/645ef0174c26c2eccffc65596a29f2b3eb61daf441ac1ba79dd71611cc14/scoringrules-0.11.0.tar.gz", hash = "sha256:434d53c292bc319d080657dfdda99a3f6a5ceac45687d0f1218f8180e02a259d", size = 194532, upload-time = "2026-06-06T21:56:02.547Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/06/55/856e2021374fa30c2a9cd3ae208c26c1a67bbd7a3da7f4dd71e8efc31b77/scoringrules-0.12.0.tar.gz", hash = "sha256:d18b7eae84030dc0932cb0c9b6eabcab12cc5fe1f2359bcdce3c983b1daf7639", size = 271794, upload-time = "2026-11-08T18:05:23.339Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/c2/646ebbc8a8b9df9244a76c8a523f7e768857ce3abd1c6bd4740470fd6b86/scoringrules-0.11.0-py3-none-any.whl", hash = "sha256:6371a36c856a8055b6751dc401a7e20000f0fd2886d602c90ee35ee0bc8ebb4e", size = 96450, upload-time = "2026-06-06T21:56:01.178Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/de/1f09d9f2de39a2c46a57b700bad49653c74263e1e07fdcee6da8bec18f7a/scoringrules-0.12.0-py3-none-any.whl", hash = "sha256:e5d149d01c2d7aaf9ae7ba4dae17695a59237069189e3541ac8088ddbf96c7cb", size = 116463, upload-time = "2026-11-08T18:05:21.748Z" },
 ]
 
 [[package]]
