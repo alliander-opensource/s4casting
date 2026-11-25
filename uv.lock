@@ -784,7 +784,7 @@ wheels = [
 
 [[package]]
 name = "folium"
-version = "0.20.0"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "branca" },
@@ -793,9 +793,9 @@ dependencies = [
     { name = "requests" },
     { name = "xyzservices" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c7/76/84a1b1b00ce71f9c0c44af7d80f310c02e2e583591fe7d4cb03baecd0d3f/folium-0.20.0.tar.gz", hash = "sha256:a0d78b9d5a36ba7589ca9aedbd433e84e9fcab79cd6ac213adbcff922e454cb9", size = 109932, upload-time = "2025-06-16T20:22:51.803Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/7b/d8460939f46a19e2a68010ec0c983321df36ac8f02d548d6bb8464559d66/folium-1.0.0.tar.gz", hash = "sha256:f890429a3a3fd83e27f77edcb6839ec4e6ca03d774cfc1221b5fb979f0add287", size = 124254, upload-time = "2026-11-15T14:07:55.915Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/a8/5f764f333204db0390362a4356d03a43626997f26818a0e9396f1b3bd8c9/folium-0.20.0-py2.py3-none-any.whl", hash = "sha256:f0bc2a92acde20bca56367aa5c1c376c433f450608d058daebab2fc9bf8198bf", size = 113394, upload-time = "2025-06-16T20:22:50.318Z" },
+    { url = "https://files.pythonhosted.org/packages/40/58/9ba9dd101e0d962093fe0b3e7d57a7f6ba3201784e16aa3e4cac406a4871/folium-1.0.0-py2.py3-none-any.whl", hash = "sha256:9e7ade633e3962e5a677d81803763819395f09189823631283ac08b5df5ca5ad", size = 130833, upload-time = "2026-11-15T14:07:54.199Z" },
 ]
 
 [[package]]
